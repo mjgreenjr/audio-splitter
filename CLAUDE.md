@@ -6,9 +6,8 @@ stems; or vocals plus everything else). The Split tab shows one waveform per ste
 toggle each, and plays the enabled stems together. Target platform is Omarchy (Arch) Linux only;
 Windows is not planned.
 
-Out of scope: recording audio. This repository must not contain or depend on any recording or
-streaming-service capture code. Other programs can hand it a file by passing the path as the first
-argument (`audio-splitter song.flac`).
+Out of scope: recording or capturing audio; the app only opens files. Other programs can hand it a
+file by passing the path as the first argument (`audio-splitter song.flac`).
 
 ## Run
 

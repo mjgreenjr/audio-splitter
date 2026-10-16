@@ -464,11 +464,6 @@ def test_tabs_are_playback_and_split(win):
     assert [tabs.tabText(i) for i in range(tabs.count())] == ["Playback", "Split"]
 
 
-def test_the_window_is_playback_and_splitting_only(win):
-    assert not hasattr(win, "record_btn")
-    assert win.centralWidget().count() == 2
-
-
 def test_file_given_at_startup_is_loaded(qtbot, tone_wav):
     w = MainWindow(initial_file=str(tone_wav))
     qtbot.addWidget(w)

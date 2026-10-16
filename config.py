@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 DEFAULT_CONFIG = {
-    # Folder the Open dialog starts in (audio-recorder saves its recordings here).
+    # Folder the Open dialog starts in
     "recordings_dir": "recordings",
     "stems_dir": "stems",
     # How many stems the Split tab makes: "6" (default), "4" or "2" (see core.splitter.MODES).
