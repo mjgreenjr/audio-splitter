@@ -1,12 +1,11 @@
 """A speaker button and a slider: the playback volume, 0-100 %."""
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QHBoxLayout, QSlider, QToolButton, QWidget
 
 SLIDER_WIDTH = 120
-# (volume above which the icon applies, theme icon, text fallback)
-_ICONS = [(66, "audio-volume-high", "🔊"), (33, "audio-volume-medium", "🔉"),
-          (0, "audio-volume-low", "🔈"), (-1, "audio-volume-muted", "🔇")]
+# (volume above which the glyph applies, glyph). Text, not theme icons: the theme's volume icons
+# are light-on-dark panel icons that vanish on a light button.
+_GLYPHS = [(66, "🔊"), (33, "🔉"), (0, "🔈"), (-1, "🔇")]
 
 
 class VolumeControl(QWidget):
@@ -20,6 +19,7 @@ class VolumeControl(QWidget):
         self._before_mute = 100
         self.button = QToolButton()
         self.button.setAutoRaise(False)
+        self.button.setFixedWidth(36)   # the same width for every glyph
         self.button.setStyleSheet("QToolButton{border:1px solid gray; border-radius:2px;}")
         self.button.clicked.connect(self._toggle_mute)
         self.slider = QSlider(Qt.Orientation.Horizontal)
@@ -57,13 +57,6 @@ class VolumeControl(QWidget):
         value = self.slider.value()
         if value > 0:
             self._before_mute = value
-        theme, text = next((t, x) for floor, t, x in _ICONS if value > floor)
-        icon = QIcon.fromTheme(theme)
-        if icon.isNull():
-            self.button.setIcon(QIcon())
-            self.button.setText(text)
-        else:
-            self.button.setText("")
-            self.button.setIcon(icon)
+        self.button.setText(next(glyph for floor, glyph in _GLYPHS if value > floor))
         self.button.setToolTip("Mute" if value else "Unmute")
         self.slider.setToolTip(f"Volume {value}%")
