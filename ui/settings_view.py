@@ -59,20 +59,35 @@ class SettingsView(QWidget):
         layout.addStretch(1)  # keep everything at the top
         self.load_from_config()
 
+    def _level(self) -> str:
+        return ("DEBUG" if self.debug_radio.isChecked()
+                else "INFO" if self.info_radio.isChecked() else "ERROR")
+
+    def _shown_values(self) -> dict:
+        return {"recordings_dir": self.recordings_edit.text(), "stems_dir": self.stems_edit.text(),
+                "stem_load_timeout_s": self.timeout_spin.value(), "logging": self._level()}
+
+    def _saved_values(self) -> dict:
+        """The saved settings as the form shows them (a nonsense timeout shows as the default)."""
+        level = str(self.config["logging"]).upper()
+        return {"recordings_dir": self.config["recordings_dir"], "stems_dir": self.config["stems_dir"],
+                "stem_load_timeout_s": int(normalize_timeout(self.config["stem_load_timeout_s"])),
+                "logging": level if level in ("DEBUG", "INFO") else "ERROR"}
+
+    def has_unsaved_changes(self) -> bool:
+        return self._shown_values() != self._saved_values()
+
     def load_from_config(self):
         """Show what is saved (also drops edits that were never saved)."""
-        self.recordings_edit.setText(self.config["recordings_dir"])
-        self.stems_edit.setText(self.config["stems_dir"])
-        self.timeout_spin.setValue(int(normalize_timeout(self.config["stem_load_timeout_s"])))
-        level = str(self.config["logging"]).upper()
-        radio = {"DEBUG": self.debug_radio, "INFO": self.info_radio}.get(level, self.error_radio)
-        radio.setChecked(True)
+        saved = self._saved_values()
+        self.recordings_edit.setText(saved["recordings_dir"])
+        self.stems_edit.setText(saved["stems_dir"])
+        self.timeout_spin.setValue(saved["stem_load_timeout_s"])
+        {"DEBUG": self.debug_radio, "INFO": self.info_radio}.get(
+            saved["logging"], self.error_radio).setChecked(True)
 
     def save(self):
-        self.config["recordings_dir"] = self.recordings_edit.text()
-        self.config["stems_dir"] = self.stems_edit.text()
-        self.config["stem_load_timeout_s"] = self.timeout_spin.value()
-        self.config["logging"] = ("DEBUG" if self.debug_radio.isChecked()
-                                  else "INFO" if self.info_radio.isChecked() else "ERROR")
+        for key, value in self._shown_values().items():
+            self.config[key] = value
         self.config.save()
         self.saved.emit()

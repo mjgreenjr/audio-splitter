@@ -5,6 +5,10 @@ Open an audio file, see it as a waveform, listen to it, and split it into stems 
 4 stems, or just vocals plus everything else). Each stem gets its own waveform and an on/off
 toggle, and the enabled stems play together, so you can mute the guitar or solo the drums.
 
+![Audio Splitter showing a song split into six stems](docs/screenshot.png)
+
+*"Discipline" by Nine Inch Nails, from The Slip (CC BY-NC-SA 3.0 US), split into six stems.*
+
 Target platform: Arch Linux (Omarchy). Other systems are not supported.
 
 ## Install

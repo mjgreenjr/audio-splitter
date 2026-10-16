@@ -74,7 +74,8 @@ the full package list, an Omarchy one already has most of it.
   transport buttons ⏮ ▶ ■ ⏭) and a **Split** tab (stem count selector, Load Stems…, path box,
   Split, progress bar, the stem view) and a **Settings** tab (`ui/settings_view.py`: folders, stem
   loading timeout, logging level; nothing is applied until Save, and showing the tab drops unsaved
-  edits). There is no toolbar. Switching between Playback and Split stops playback; a visit to
+  edits; leaving it with unsaved edits asks Save / Discard / Cancel, and Cancel puts the tab
+back). There is no toolbar. Switching between Playback and Split stops playback; a visit to
   Settings does not (`_last_play_tab` remembers which of the two was shown last).
 - `ui/stem_view.py` – Split tab: a row per stem (toggle + compact waveform), one shared marker, and
   the four transport buttons. It only emits signals; `MainWindow` drives the one player.

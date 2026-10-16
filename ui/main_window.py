@@ -194,6 +194,7 @@ class MainWindow(QMainWindow):
         self.settings_view.saved.connect(self._settings_saved)
         tabs.addTab(self.settings_view, "Settings")
         self._settings_tab = tabs.count() - 1
+        self._shown_tab = 0       # the tab being shown; leaving Settings may ask first
         self._last_play_tab = 0
         # Only one of Playback and Split plays at a time: switching between them stops playback.
         tabs.currentChanged.connect(self._tab_changed)
@@ -408,8 +409,16 @@ class MainWindow(QMainWindow):
         """Stop playback when switching between Playback and Split, so they never play together.
 
         A visit to Settings leaves playback alone (what counts is the last of the two playing tabs
-        that was shown). Showing Settings drops unsaved edits.
+        that was shown). Leaving Settings with unsaved edits asks first: Save, Discard or Cancel.
         """
+        previous, self._shown_tab = self._shown_tab, index
+        if previous == self._settings_tab and not self._leave_settings():
+            tabs = self.centralWidget()          # stay: put the tab back without another event
+            tabs.blockSignals(True)
+            tabs.setCurrentIndex(previous)
+            tabs.blockSignals(False)
+            self._shown_tab = previous
+            return
         if index == self._settings_tab:
             self.settings_view.load_from_config()
             return
@@ -421,6 +430,22 @@ class MainWindow(QMainWindow):
         self.is_playing = False
         self.play_btn.setIcon(QIcon.fromTheme("media-playback-start"))
         self.stem_view.set_playing(False)
+        self.statusBar().showMessage("Stopped", 3000)  # not "Playing..." any more
+
+    def _leave_settings(self) -> bool:
+        """True when it is fine to leave the Settings tab: nothing unsaved, or the user chose
+        Save or Discard. False means stay."""
+        if not self.settings_view.has_unsaved_changes():
+            return True
+        buttons = QMessageBox.StandardButton
+        answer = QMessageBox.question(
+            self, "Unsaved settings",
+            "You changed settings without saving them.\n\nSave them before leaving?",
+            buttons.Save | buttons.Discard | buttons.Cancel, buttons.Save)
+        if answer == buttons.Save:
+            self.settings_view.save()
+            return True
+        return answer == buttons.Discard
 
     @pyqtSlot()
     def _settings_saved(self):

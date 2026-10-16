@@ -12,6 +12,8 @@ def win(qtbot, monkeypatch, tmp_path):
     from PyQt6.QtWidgets import QMessageBox
     for fn in ("critical", "warning", "information"):
         monkeypatch.setattr(QMessageBox, fn, lambda *a, **k: None)
+    # A question nobody planned for is answered "Cancel", which never does anything.
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Cancel)
     w = MainWindow()
     w.config["stems_dir"] = str(tmp_path / "stems")  # never the checkout's real stems/ folder
     qtbot.addWidget(w)
@@ -796,12 +798,102 @@ def test_saving_applies_the_logging_level(win, monkeypatch):
     assert applied == ["INFO", "ERROR"]
 
 
-def test_showing_the_settings_tab_drops_edits_that_were_not_saved(win):
+def _answer_unsaved(monkeypatch, button):
+    """Stand in for the "Unsaved settings" question; returns the questions asked."""
+    from PyQt6.QtWidgets import QMessageBox
+    asked = []
+
+    def fake(parent, title, text, buttons=None, default=None):
+        asked.append(title)
+        return button
+    monkeypatch.setattr(QMessageBox, "question", fake)
+    return asked
+
+
+def test_leaving_settings_with_unsaved_edits_asks_and_save_keeps_them(win, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+    asked = _answer_unsaved(monkeypatch, QMessageBox.StandardButton.Save)
     tabs = win.centralWidget()
-    win.settings_view.stems_edit.setText("/never/saved")
-    tabs.setCurrentIndex(0)
     tabs.setCurrentIndex(2)
-    assert win.settings_view.stems_edit.text() == win.config["stems_dir"]
+    win.settings_view.stems_edit.setText("/kept")
+    tabs.setCurrentIndex(0)
+    assert asked == ["Unsaved settings"]
+    assert tabs.currentIndex() == 0 and win.config["stems_dir"] == "/kept"
+
+
+def test_discard_leaves_and_drops_the_edits(win, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+    _answer_unsaved(monkeypatch, QMessageBox.StandardButton.Discard)
+    tabs = win.centralWidget()
+    tabs.setCurrentIndex(2)
+    before = win.config["stems_dir"]
+    win.settings_view.stems_edit.setText("/never/saved")
+    tabs.setCurrentIndex(1)
+    assert tabs.currentIndex() == 1 and win.config["stems_dir"] == before
+    tabs.setCurrentIndex(2)                       # coming back shows what is saved
+    assert win.settings_view.stems_edit.text() == before
+
+
+def test_cancel_stays_on_settings_with_the_edits_intact(win, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+    asked = _answer_unsaved(monkeypatch, QMessageBox.StandardButton.Cancel)
+    tabs = win.centralWidget()
+    tabs.setCurrentIndex(2)
+    win.settings_view.timeout_spin.setValue(99)
+    tabs.setCurrentIndex(0)
+    assert asked == ["Unsaved settings"]
+    assert tabs.currentIndex() == 2 and win.settings_view.timeout_spin.value() == 99
+    assert win.config["stem_load_timeout_s"] != 99
+    tabs.setCurrentIndex(1)                        # asked again, still cancelled
+    assert tabs.currentIndex() == 2 and len(asked) == 2
+
+
+def test_no_question_when_nothing_changed_or_when_not_leaving_settings(win, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+    asked = _answer_unsaved(monkeypatch, QMessageBox.StandardButton.Cancel)
+    tabs = win.centralWidget()
+    tabs.setCurrentIndex(2)
+    tabs.setCurrentIndex(0)                        # unchanged: leaves freely
+    assert tabs.currentIndex() == 0
+    tabs.setCurrentIndex(1)                        # Playback -> Split: nothing to ask
+    assert tabs.currentIndex() == 1 and asked == []
+    tabs.setCurrentIndex(2)
+    win.settings_view.stems_edit.setText("/x")
+    win.settings_view.save_btn.click()             # saved: nothing unsaved any more
+    tabs.setCurrentIndex(0)
+    assert tabs.currentIndex() == 0 and asked == []
+
+
+def test_changing_a_setting_back_is_not_a_change(win, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+    asked = _answer_unsaved(monkeypatch, QMessageBox.StandardButton.Cancel)
+    tabs = win.centralWidget()
+    tabs.setCurrentIndex(2)
+    original = win.settings_view.timeout_spin.value()
+    win.settings_view.timeout_spin.setValue(original + 5)
+    assert win.settings_view.has_unsaved_changes()
+    win.settings_view.timeout_spin.setValue(original)
+    assert not win.settings_view.has_unsaved_changes()
+    tabs.setCurrentIndex(0)
+    assert tabs.currentIndex() == 0 and asked == []
+
+
+def test_a_playing_tab_stopped_by_switching_says_stopped_not_playing(needle, win, stem_files, tone_wav, qtbot):
+    from conftest import ffplay_pids
+    tabs = win.centralWidget()
+    tabs.setCurrentIndex(1)
+    win.stem_view.set_stems(stem_files)
+    win.stem_view.play_btn.click()
+    qtbot.waitUntil(lambda: len(ffplay_pids(needle)) == 1, timeout=5000)
+    assert win.statusBar().currentMessage() == "Playing stems..."
+    tabs.setCurrentIndex(0)
+    qtbot.waitUntil(lambda: ffplay_pids(needle) == [], timeout=5000)
+    assert win.statusBar().currentMessage() == "Stopped"
+    win._load_file(Path(tone_wav))
+    win.play_btn.click()
+    qtbot.waitUntil(lambda: win.statusBar().currentMessage() == "Playing...", timeout=5000)
+    tabs.setCurrentIndex(1)
+    assert win.statusBar().currentMessage() == "Stopped"
 
 
 def test_a_nonsense_saved_timeout_shows_the_default(win):

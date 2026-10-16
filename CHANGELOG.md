@@ -10,11 +10,16 @@ stem splitting and installation.
 ## 2026-10-15
 
 ### Added
+- A screenshot in the README.
 - A licence: GPL-3.0-or-later (`LICENSE`), with a note in the README about the Demucs models.
 - Loading an audio file also loads the stems of an earlier split of it, if there are any. The stems
   of the selected stem count are used first, then those of another count.
 
 ### Changed
+- Leaving the Settings tab with changes you have not saved asks first: Save, Discard or Cancel
+  (Cancel keeps you on the tab with your edits).
+- The status bar shows "Stopped" when switching tabs stops playback; it used to keep saying
+  "Playing...".
 - Settings moved from a dialog behind a toolbar button to a Settings tab with a Save button. The
   toolbar is gone. Looking at the Settings tab does not stop playback.
 - Stems load in the background, so the window no longer freezes (about 1.5 s for six stems of a
