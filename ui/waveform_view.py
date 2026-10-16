@@ -74,6 +74,9 @@ class WaveformWidget(QWidget):
         # Disable mouse interaction for the plot (no zooming or panning)
         self.plot_widget.getViewBox().setMouseEnabled(x=False, y=False)
         self.plot_widget.getViewBox().setMenuEnabled(False)
+        # pyqtgraph's "A" (auto-scale) button pops up when the mouse is over a plot; with zoom
+        # disabled it does nothing, so hide it.
+        self.plot_widget.hideButtons()
 
         # Click-to-seek: a click anywhere on the plot jumps the marker there.
         # This is far easier to hit than the thin marker line, especially
@@ -105,7 +108,9 @@ class WaveformWidget(QWidget):
         if compact:
             self.plot_widget.hideAxis('left')
             self.plot_widget.hideAxis('bottom')
-            self.plot_widget.showGrid(x=True, y=False)
+            # Grid lines are drawn by the axes, and only the bottom row has one, so a grid would
+            # show on that row alone.
+            self.plot_widget.showGrid(x=False, y=False)
 
         # Initialize with no data
         self.clear()

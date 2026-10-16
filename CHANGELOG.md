@@ -29,6 +29,8 @@ stem splitting and installation.
   splitting again replaces the stems on disk.
 
 ### Fixed
+- A small "A" (auto-scale) button popped up over a waveform when the mouse was on it; it does
+  nothing here and is hidden. The faint grid lines on only the bottom stem row are gone.
 - The installer now also installs the Qt libraries `libxkbcommon`, `libxkbcommon-x11`,
   `xcb-util-keysyms` and `xcb-util-wm`. On an Arch system without a desktop their absence stopped
   the app from starting (`libxkbcommon.so.0` not found).

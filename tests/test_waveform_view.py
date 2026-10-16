@@ -66,3 +66,21 @@ def test_dimming_changes_the_curve_and_back(qtbot):
     assert w.is_dimmed() and sum(faint[:3]) < sum(normal[:3])    # darker, so less prominent
     w.set_dimmed(False)
     assert not w.is_dimmed() and w.curve.opts["pen"].color().getRgb() == normal
+
+
+def test_the_autoscale_button_is_hidden_in_both_kinds_of_waveform(qtbot):
+    for compact in (False, True):
+        w = WaveformWidget(compact=compact)
+        qtbot.addWidget(w)
+        assert w.plot_widget.plotItem.buttonsHidden
+
+
+def test_stem_rows_have_no_grid_but_the_main_waveform_does(qtbot):
+    def grid(w):
+        ctrl = w.plot_widget.plotItem.ctrl
+        return ctrl.xGridCheck.isChecked(), ctrl.yGridCheck.isChecked()
+    main, row = WaveformWidget(), WaveformWidget(compact=True)
+    qtbot.addWidget(main)
+    qtbot.addWidget(row)
+    assert grid(main) == (True, True)
+    assert grid(row) == (False, False)
