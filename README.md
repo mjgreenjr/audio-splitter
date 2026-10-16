@@ -36,6 +36,8 @@ Re-run `./install.sh` after pulling changes to update. Your settings are kept.
   A 3-minute song takes about 35 seconds on a recent CPU. The stems appear as rows; untick a
   row to leave it out of playback. Loading a file that was split before shows its stems at once;
   *Load Stems…* opens any other folder of stems.
+- **Settings** tab: the audio and stems folders, how long to wait for a song's stems to load, and
+  the logging level. Press *Save* to apply them.
 
 Stems are saved as FLAC in `~/Music/audio-splitter/stems/<model>/<song>/`.
 
@@ -50,8 +52,8 @@ Stems are saved as FLAC in `~/Music/audio-splitter/stems/<model>/<song>/`.
 | Demucs models | `~/.cache/huggingface` |
 
 The stems folder, the folder the Open dialog starts in, and how long the app waits for a song's
-stems to load (60 seconds by default; raise it for very long songs) can be changed in the app's
-settings.
+stems to load (60 seconds by default; raise it for very long songs) can be changed on the
+Settings tab.
 
 ## Uninstall
 

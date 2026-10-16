@@ -72,7 +72,10 @@ the full package list, an Omarchy one already has most of it.
 - `core/logger.py` – logging setup (logs to `logs/`).
 - `ui/main_window.py` – the window: a **Playback** tab (path box, Load from File, waveform,
   transport buttons ⏮ ▶ ■ ⏭) and a **Split** tab (stem count selector, Load Stems…, path box,
-  Split, progress bar, the stem view).
+  Split, progress bar, the stem view) and a **Settings** tab (`ui/settings_view.py`: folders, stem
+  loading timeout, logging level; nothing is applied until Save, and showing the tab drops unsaved
+  edits). There is no toolbar. Switching between Playback and Split stops playback; a visit to
+  Settings does not (`_last_play_tab` remembers which of the two was shown last).
 - `ui/stem_view.py` – Split tab: a row per stem (toggle + compact waveform), one shared marker, and
   the four transport buttons. It only emits signals; `MainWindow` drives the one player.
 - `ui/waveform_view.py` – pyqtgraph waveform with draggable marker and click-to-seek; a compact mode
@@ -85,7 +88,7 @@ Both file pickers (Load from File, Load Stems…) are Qt's own dialogs, not the 
 size and wording are ours: as wide as the app window (480-900 px, so the buttons stay on screen when
 the window is a quarter of the screen), "Open" / "Select Folder" buttons, a shared `AUDIO_FILTER`.
 Stems load on a worker thread (`MainWindow._show_stems`): the pointer turns busy at once, the window
-(central widget and toolbar) locks if the load runs past `STEM_LOCK_DELAY_MS` (250 ms, so quick loads
+(the whole tab widget) locks if the load runs past `STEM_LOCK_DELAY_MS` (250 ms, so quick loads
 never flash), and after `stem_load_timeout_s` the wait is given up with a message naming the setting.
 A newer load, loading another file, or closing the window cancels the one running (a Python thread
 cannot be killed; it stops at its next block and its result is dropped). Split asks "Split again?" (default No) when `stems_in()` finds stems for that file and the selected

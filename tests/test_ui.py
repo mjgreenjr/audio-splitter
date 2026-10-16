@@ -604,7 +604,7 @@ def test_both_dialogs_filter_the_same_audio_types(win, tmp_path):
 
 def test_tabs_are_playback_and_split(win):
     tabs = win.centralWidget()
-    assert [tabs.tabText(i) for i in range(tabs.count())] == ["Playback", "Split"]
+    assert [tabs.tabText(i) for i in range(tabs.count())] == ["Playback", "Split", "Settings"]
 
 
 def test_file_given_at_startup_is_loaded(qtbot, tone_wav):
@@ -671,11 +671,11 @@ def test_a_slow_load_shows_a_busy_pointer_then_locks_the_window(win, stem_files,
     assert win.stems_loading() and _wait_cursor()           # at once ...
     assert win.centralWidget().isEnabled()                   # ... but not locked yet
     qtbot.waitUntil(lambda: not win.centralWidget().isEnabled(), timeout=3000)
-    assert not win._toolbar.isEnabled()
+    assert not win.centralWidget().isEnabled()
     slow_loader.set()
     settle(win, qtbot)
     assert _no_override_cursor()
-    assert win.centralWidget().isEnabled() and win._toolbar.isEnabled()
+    assert win.centralWidget().isEnabled()
     assert len(win.stem_view.all_paths()) == 3
 
 
@@ -736,17 +736,10 @@ def test_closing_the_window_during_a_load_stops_it_cleanly(win, stem_files, slow
     assert _no_override_cursor()
 
 
-def test_the_timeout_is_a_setting_with_a_default(win):
+def test_the_timeout_has_a_default_in_the_config():
     import config as cfg
-    from ui.main_window import SettingsDialog
     from core.stemload import DEFAULT_TIMEOUT_S
     assert cfg.DEFAULT_CONFIG["stem_load_timeout_s"] == DEFAULT_TIMEOUT_S
-    dlg = SettingsDialog(win.config)
-    assert dlg.timeout_spin.value() == int(DEFAULT_TIMEOUT_S)
-    dlg.timeout_spin.setValue(120)
-    dlg.accept()
-    assert win.config["stem_load_timeout_s"] == 120
-    assert '"stem_load_timeout_s": 120' in cfg.CONFIG_PATH.read_text()
 
 
 def test_a_nonsense_timeout_in_the_config_falls_back_to_the_default(win, stem_files, monkeypatch, qtbot):
@@ -758,3 +751,91 @@ def test_a_nonsense_timeout_in_the_config_falls_back_to_the_default(win, stem_fi
     win.load_stems_btn.click()
     settle(win, qtbot)
     assert seen == [int(DEFAULT_TIMEOUT_S * 1000)]
+
+
+# --- the Settings tab ---------------------------------------------------------
+
+def test_there_is_no_toolbar_any_more(win):
+    from PyQt6.QtWidgets import QToolBar
+    assert win.findChildren(QToolBar) == []
+
+
+def test_the_settings_tab_shows_the_saved_settings(win):
+    win.centralWidget().setCurrentIndex(2)       # showing the tab reads the settings
+    sv = win.settings_view
+    assert sv.recordings_edit.text() == win.config["recordings_dir"]
+    assert sv.stems_edit.text() == win.config["stems_dir"]
+    assert sv.timeout_spin.value() == 60
+    assert sv.debug_radio.isChecked()          # the default logging level
+
+
+def test_nothing_is_saved_until_save_is_pressed(win):
+    import config as cfg
+    sv = win.settings_view
+    sv.stems_edit.setText("/somewhere/else")
+    sv.timeout_spin.setValue(120)
+    assert win.config["stems_dir"] != "/somewhere/else" and not cfg.CONFIG_PATH.exists()
+    sv.save_btn.click()
+    assert win.config["stems_dir"] == "/somewhere/else"
+    assert win.config["stem_load_timeout_s"] == 120
+    saved = cfg.CONFIG_PATH.read_text()
+    assert '"stems_dir": "/somewhere/else"' in saved and '"stem_load_timeout_s": 120' in saved
+    assert win.statusBar().currentMessage() == "Settings saved"
+
+
+def test_saving_applies_the_logging_level(win, monkeypatch):
+    import logging
+    import ui.main_window as mw
+    applied = []
+    monkeypatch.setattr(mw, "setup_logging", lambda level: applied.append(level))
+    win.settings_view.info_radio.setChecked(True)
+    win.settings_view.save_btn.click()
+    assert applied == ["INFO"] and win.config["logging"] == "INFO"
+    win.settings_view.error_radio.setChecked(True)
+    win.settings_view.save_btn.click()
+    assert applied == ["INFO", "ERROR"]
+
+
+def test_showing_the_settings_tab_drops_edits_that_were_not_saved(win):
+    tabs = win.centralWidget()
+    win.settings_view.stems_edit.setText("/never/saved")
+    tabs.setCurrentIndex(0)
+    tabs.setCurrentIndex(2)
+    assert win.settings_view.stems_edit.text() == win.config["stems_dir"]
+
+
+def test_a_nonsense_saved_timeout_shows_the_default(win):
+    win.config["stem_load_timeout_s"] = "soon"
+    win.settings_view.load_from_config()
+    assert win.settings_view.timeout_spin.value() == 60
+
+
+def test_visiting_settings_does_not_stop_playback_but_switching_playing_tabs_does(needle, win, stem_files, qtbot):
+    from conftest import ffplay_pids
+    tabs = win.centralWidget()
+    tabs.setCurrentIndex(1)
+    win.stem_view.set_stems(stem_files)
+    win.stem_view.play_btn.click()
+    qtbot.waitUntil(lambda: len(ffplay_pids(needle)) == 1, timeout=5000)
+    tabs.setCurrentIndex(2)                      # a look at the settings ...
+    qtbot.wait(300)
+    assert len(ffplay_pids(needle)) == 1 and win.stem_view.is_playing
+    tabs.setCurrentIndex(1)                      # ... and back: still playing
+    qtbot.wait(300)
+    assert len(ffplay_pids(needle)) == 1
+    tabs.setCurrentIndex(2)
+    tabs.setCurrentIndex(0)                      # Settings, then Playback: this one stops the stems
+    qtbot.waitUntil(lambda: ffplay_pids(needle) == [], timeout=5000)
+    assert not win.stem_view.is_playing
+
+
+def test_the_whole_window_locks_while_stems_load_including_settings(win, stem_files, slow_loader, monkeypatch, qtbot):
+    import ui.main_window as mw
+    monkeypatch.setattr(mw, "STEM_LOCK_DELAY_MS", 20)
+    _pick_folder(monkeypatch, Path(stem_files[0]).parent)
+    win.load_stems_btn.click()
+    qtbot.waitUntil(lambda: not win.centralWidget().isEnabled(), timeout=3000)
+    assert not win.settings_view.isEnabled() and not win.settings_view.save_btn.isEnabled()
+    slow_loader.set()
+    settle(win, qtbot)
+    assert win.settings_view.isEnabled()

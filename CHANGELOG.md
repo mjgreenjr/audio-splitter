@@ -15,6 +15,8 @@ stem splitting and installation.
   of the selected stem count are used first, then those of another count.
 
 ### Changed
+- Settings moved from a dialog behind a toolbar button to a Settings tab with a Save button. The
+  toolbar is gone. Looking at the Settings tab does not stop playback.
 - Stems load in the background, so the window no longer freezes (about 1.5 s for six stems of a
   3-minute song, about 5 s for 15 minutes). The pointer shows busy while they load, the window is
   locked if it takes more than a quarter of a second, and loading is given up after a time limit

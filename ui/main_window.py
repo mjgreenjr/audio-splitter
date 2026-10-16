@@ -5,16 +5,16 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QComboBox, QProgressBar, QLabel, QFileDialog,
-    QMessageBox, QTabWidget, QToolBar, QDialog,
-    QFormLayout, QLineEdit, QScrollArea, QToolButton,
-    QRadioButton, QButtonGroup, QSizePolicy, QSpinBox,
+    QMessageBox, QTabWidget, QDialog,
+    QLineEdit, QScrollArea, QToolButton, QSizePolicy,
 )
-from PyQt6.QtGui import QAction, QCursor, QIcon
+from PyQt6.QtGui import QCursor, QIcon
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize
 from core.splitter import MODES, SplitterThread, existing_stems, normalize_mode, stems_in
 from core.stemload import StemLoadThread, normalize_timeout
 from core.waveform import min_max_envelope
 from core.player import PlayerThread
+from ui.settings_view import SettingsView
 from ui.stem_view import AUDIO_EXTENSIONS, StemView
 from ui.waveform_view import WaveformWidget
 from config import Config
@@ -31,73 +31,6 @@ AUDIO_FILTER = "Audio files (" + " ".join(f"*{e}" for e in sorted(AUDIO_EXTENSIO
 STEM_LOCK_DELAY_MS = 250
 
 
-class SettingsDialog(QDialog):
-    def __init__(self, config: Config, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Settings")
-        self.config = config
-        layout = QFormLayout(self)
-
-        self.recordings_edit = QLineEdit(config["recordings_dir"])
-        self.recordings_edit.setToolTip("The Open dialog starts in this folder")
-        self.stems_edit = QLineEdit(config["stems_dir"])
-        self.timeout_spin = QSpinBox()
-        self.timeout_spin.setRange(1, 3600)
-        self.timeout_spin.setSuffix(" s")
-        self.timeout_spin.setValue(int(normalize_timeout(config["stem_load_timeout_s"])))
-        self.timeout_spin.setToolTip(
-            "Loading a song's stems is stopped after this long. Raise it for very long songs "
-            "or a slow disk.")
-        # Radio buttons for logging level.
-        self.debug_radio = QRadioButton("DEBUG")
-        self.info_radio = QRadioButton("INFO")
-        self.error_radio = QRadioButton("ERROR")
-        self.logging_group = QButtonGroup(self)
-        self.logging_group.addButton(self.debug_radio)
-        self.logging_group.addButton(self.info_radio)
-        self.logging_group.addButton(self.error_radio)
-        self.logging_group.setExclusive(True)
-        # ``Config`` exposes data via mapping interface, so we use ``[]``
-        # instead of ``get`` which does not exist.
-        level = config["logging"]
-        if level.upper() == "DEBUG":
-            self.debug_radio.setChecked(True)
-        elif level.upper() == "INFO":
-            self.info_radio.setChecked(True)
-        else:
-            self.error_radio.setChecked(True)
-
-        layout.addRow("Audio folder:", self.recordings_edit)
-        layout.addRow("Stems folder:", self.stems_edit)
-        layout.addRow("Stem loading timeout:", self.timeout_spin)
-        # Container for radio buttons.
-        radio_container = QHBoxLayout()
-        radio_container.addWidget(self.debug_radio)
-        radio_container.addWidget(self.info_radio)
-        radio_container.addWidget(self.error_radio)
-        layout.addRow("Logging level:", radio_container)
-
-        btns = QHBoxLayout()
-        ok = QPushButton("OK")
-        cancel = QPushButton("Cancel")
-        ok.clicked.connect(self.accept)
-        cancel.clicked.connect(self.reject)
-        btns.addWidget(ok)
-        btns.addWidget(cancel)
-        layout.addRow(btns)
-
-    def accept(self):
-        self.config["recordings_dir"] = self.recordings_edit.text()
-        self.config["stems_dir"] = self.stems_edit.text()
-        self.config["stem_load_timeout_s"] = self.timeout_spin.value()
-        # Determine selected logging level.
-        level = "DEBUG" if self.debug_radio.isChecked() else (
-            "INFO" if self.info_radio.isChecked() else "ERROR"
-        )
-        self.config["logging"] = level
-        self.config.save()
-        super().accept()
-
 class MainWindow(QMainWindow):
     def __init__(self, initial_file=None):
         """``initial_file``: an audio file to open at startup (e.g. from the command line)."""
@@ -108,7 +41,6 @@ class MainWindow(QMainWindow):
         self.config = Config()
         setup_logging(self.config["logging"])
 
-        self._setup_toolbar()
         self._setup_tabs()
 
         self._current_file = None
@@ -138,20 +70,6 @@ class MainWindow(QMainWindow):
         else:
             log.warning("File given on the command line not found: %s", path)
             self.statusBar().showMessage(f"File not found: {path}", 8000)
-
-    def _setup_toolbar(self):
-        tb = QToolBar("Main")
-        self._toolbar = tb
-        self.addToolBar(tb)
-        settings_action = QAction("Settings", self)
-        settings_action.triggered.connect(self._open_settings)
-        tb.addAction(settings_action)
-
-    def _open_settings(self):
-        dlg = SettingsDialog(self.config, self)
-        if dlg.exec():
-            setup_logging(self.config["logging"])
-            self.statusBar().showMessage("Settings updated", 3000)
 
     @staticmethod
     def _transport_button(text, theme_icon, tooltip):
@@ -270,7 +188,14 @@ class MainWindow(QMainWindow):
         split_scroll.setWidgetResizable(True)
         split_scroll.setWidget(split_widget)
         tabs.addTab(split_scroll, "Split")
-        # Only one tab plays at a time: leaving a tab stops its playback.
+
+        # Settings tab: edited in place, applied by its Save button.
+        self.settings_view = SettingsView(self.config)
+        self.settings_view.saved.connect(self._settings_saved)
+        tabs.addTab(self.settings_view, "Settings")
+        self._settings_tab = tabs.count() - 1
+        self._last_play_tab = 0
+        # Only one of Playback and Split plays at a time: switching between them stops playback.
         tabs.currentChanged.connect(self._tab_changed)
 
     @staticmethod
@@ -479,14 +404,28 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Playback finished", 3000)
 
     @pyqtSlot(int)
-    def _tab_changed(self, _index):
-        """Stop playback when switching tabs, so the tabs never play together."""
-        if self._player is None:
+    def _tab_changed(self, index):
+        """Stop playback when switching between Playback and Split, so they never play together.
+
+        A visit to Settings leaves playback alone (what counts is the last of the two playing tabs
+        that was shown). Showing Settings drops unsaved edits.
+        """
+        if index == self._settings_tab:
+            self.settings_view.load_from_config()
+            return
+        switched = index != self._last_play_tab
+        self._last_play_tab = index
+        if not switched or self._player is None:
             return
         self._player.stop()
         self.is_playing = False
         self.play_btn.setIcon(QIcon.fromTheme("media-playback-start"))
         self.stem_view.set_playing(False)
+
+    @pyqtSlot()
+    def _settings_saved(self):
+        setup_logging(self.config["logging"])
+        self.statusBar().showMessage("Settings saved", 3000)
 
     @pyqtSlot()
     def _on_play_clicked(self):
@@ -711,7 +650,6 @@ class MainWindow(QMainWindow):
         self._timeout_timer.stop()
         if self._locked:
             self.centralWidget().setEnabled(True)
-            self._toolbar.setEnabled(True)
             self._locked = False
         if self._busy_cursor:
             QApplication.restoreOverrideCursor()
@@ -722,7 +660,6 @@ class MainWindow(QMainWindow):
         """Nothing can be clicked while the stems load (the title bar still closes the window)."""
         if self._stem_loader is not None and not self._locked:
             self.centralWidget().setEnabled(False)
-            self._toolbar.setEnabled(False)
             self._locked = True
 
     @pyqtSlot()
