@@ -15,6 +15,13 @@ stem splitting and installation.
   of the selected stem count are used first, then those of another count.
 
 ### Changed
+- Stems load in the background, so the window no longer freezes (about 1.5 s for six stems of a
+  3-minute song, about 5 s for 15 minutes). The pointer shows busy while they load, the window is
+  locked if it takes more than a quarter of a second, and loading is given up after a time limit
+  with a message that says which setting to raise (Settings > Stem loading timeout, default 60
+  seconds, `stem_load_timeout_s` in `config.json`).
+- Reading a stem uses a fixed amount of memory (about 70 MB) however long it is; a 15-minute stereo
+  stem used to need about 520 MB.
 - The time axis shows minutes and seconds (0:30, 1:00, 1:30 ...; hours from one hour) with ticks
   on round times, instead of milliseconds.
 - A stem that is switched off is drawn in a muted colour, so it is obvious which stems are in the mix.

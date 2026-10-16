@@ -8,6 +8,9 @@ DEFAULT_CONFIG = {
     "stems_dir": "stems",
     # How many stems the Split tab makes: "6" (default), "4" or "2" (see core.splitter.MODES).
     "split_mode": "6",
+    # Seconds to wait for a song's stems to load before giving up (raise it for very long songs
+    # or a slow disk). Not a positive number: the default of 60 is used.
+    "stem_load_timeout_s": 60,
     # Use a string value for the desired logging level.  The application
     # expects one of ``DEBUG``, ``INFO`` or ``ERROR``.  ``DEBUG`` is the
     # default to preserve the historic behaviour of having verbose output

@@ -8,14 +8,13 @@ it in every row.
 import logging
 from pathlib import Path
 
-import soundfile as sf
 from PyQt6.QtCore import QSize, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QCheckBox, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget,
 )
 
-from core.waveform import min_max_envelope
+from core.waveform import envelope_from_file
 from ui.waveform_view import WaveformWidget
 
 log = logging.getLogger(__name__)
@@ -91,16 +90,23 @@ class StemView(QWidget):
 
     # ------------------------------------------------------------------
     def set_stems(self, files):
-        """Show one row per stem file (replaces any earlier rows)."""
-        self.clear()
-        paths = sorted((str(f) for f in files), key=_stem_sort_key)
+        """Read the files here and now, and show one row each (replaces any earlier rows).
+
+        Reading takes a moment, so the window itself loads in the background
+        (``StemLoadThread``) and calls ``set_loaded``.
+        """
         loaded = []
-        for path in paths:
+        for path in files:
             try:
-                data, rate = sf.read(path, dtype="float32")
-                loaded.append((path, *min_max_envelope(data, rate)))
+                loaded.append((str(path), *envelope_from_file(path)))
             except Exception:
                 log.exception("Could not read stem %s", path)
+        self.set_loaded(loaded)
+
+    def set_loaded(self, loaded):
+        """Show one row per ``(path, time_ms, amplitude)`` (replaces any earlier rows)."""
+        self.clear()
+        loaded = sorted(loaded, key=lambda item: _stem_sort_key(item[0]))
         if not loaded:
             return
         peak = max(float(abs(amp).max()) for _, _, amp in loaded if len(amp))

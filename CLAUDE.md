@@ -47,7 +47,10 @@ the full package list, an Omarchy one already has most of it.
 - `main.py` – entry point; sets up logging from `config.json`, opens `MainWindow` (optionally on a
   file given as the first argument).
 - `config.py` / `config.json` (untracked) – tiny JSON-backed settings: `recordings_dir` (where the
-  Open dialog starts), `stems_dir`, `split_mode`, `logging`.
+  Open dialog starts), `stems_dir`, `split_mode`, `stem_load_timeout_s` (seconds before loading a
+  song's stems is given up, default 60), `logging`. `Config` starts from `DEFAULT_CONFIG` and
+  overlays the file, so a new key only needs a default; there is no version field or migration
+  (a rename or a changed meaning would need one).
 - `core/player.py` – `PlayerThread`, the playback engine (see below).
 - `core/splitter.py` – `SplitterThread`: runs Demucs and writes 16-bit FLAC stems. The Split tab
   picks a mode (`MODES`, config key `split_mode`, default `"6"`): **6** = `htdemucs_6s` (vocals,
@@ -60,7 +63,12 @@ the full package list, an Omarchy one already has most of it.
   with the system Python (which has PyQt6 but no demucs). Output is not reproducible run to run
   (Demucs's random shift); that is accepted.
 - `core/waveform.py` – `min_max_envelope`: reduces audio to ~2,000 min/max buckets for drawing (the
-  main waveform and every stem row).
+  main waveform and every stem row). `envelope_from_file` gives the same result for a file read in
+  blocks (flat memory: a 15-minute stereo stem is ~520 MB decoded, the blocks need ~70 MB) and
+  checks a cancel callback between blocks.
+- `core/stemload.py` – `StemLoadThread`: reads the stem files and emits their envelopes, so the
+  window does not freeze (six 15-minute stems take ~5 s). `normalize_timeout` turns the
+  `stem_load_timeout_s` setting into seconds (not a positive number: 60).
 - `core/logger.py` – logging setup (logs to `logs/`).
 - `ui/main_window.py` – the window: a **Playback** tab (path box, Load from File, waveform,
   transport buttons ⏮ ▶ ■ ⏭) and a **Split** tab (stem count selector, Load Stems…, path box,
@@ -76,7 +84,11 @@ the full package list, an Omarchy one already has most of it.
 Both file pickers (Load from File, Load Stems…) are Qt's own dialogs, not the system ones, so their
 size and wording are ours: as wide as the app window (480-900 px, so the buttons stay on screen when
 the window is a quarter of the screen), "Open" / "Select Folder" buttons, a shared `AUDIO_FILTER`.
-Split asks "Split again?" (default No) when `stems_in()` finds stems for that file and the selected
+Stems load on a worker thread (`MainWindow._show_stems`): the pointer turns busy at once, the window
+(central widget and toolbar) locks if the load runs past `STEM_LOCK_DELAY_MS` (250 ms, so quick loads
+never flash), and after `stem_load_timeout_s` the wait is given up with a message naming the setting.
+A newer load, loading another file, or closing the window cancels the one running (a Python thread
+cannot be killed; it stops at its next block and its result is dropped). Split asks "Split again?" (default No) when `stems_in()` finds stems for that file and the selected
 mode, since Demucs overwrites that folder. Loading a file (`_load_file`) also shows its earlier stems when `existing_stems()` finds them under
 `stems_dir` (the selected mode's folder first, then the other modes'; matched by file name without
 extension, like the split's own output folder). Load from File starts in `recordings_dir`; Load
@@ -166,5 +178,5 @@ checks (does it sound right, does dragging feel right) still need a manual run o
 ## Known issues / ideas not built
 
 - A crash on audio stop was only partially addressed.
-- Read the stems off the UI thread (drawing six rows blocks ~1.5 s); zoom/scroll on the waveform;
-  richer export options.
+- Zoom/scroll on the waveform; richer export options. Building the six rows still happens on the UI
+  thread (short); the main waveform of the loaded file is still read on it too (~1 s for 15 min).

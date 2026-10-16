@@ -49,7 +49,9 @@ Stems are saved as FLAC in `~/Music/audio-splitter/stems/<model>/<song>/`.
 | Launcher, menu entry | `~/.local/bin/audio-splitter`, `~/.local/share/applications/` |
 | Demucs models | `~/.cache/huggingface` |
 
-The stems folder, and the folder the Open dialog starts in, can be changed in the app's settings.
+The stems folder, the folder the Open dialog starts in, and how long the app waits for a song's
+stems to load (60 seconds by default; raise it for very long songs) can be changed in the app's
+settings.
 
 ## Uninstall
 

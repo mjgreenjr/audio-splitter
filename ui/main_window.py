@@ -7,11 +7,12 @@ from PyQt6.QtWidgets import (
     QPushButton, QComboBox, QProgressBar, QLabel, QFileDialog,
     QMessageBox, QTabWidget, QToolBar, QDialog,
     QFormLayout, QLineEdit, QScrollArea, QToolButton,
-    QRadioButton, QButtonGroup, QSizePolicy,
+    QRadioButton, QButtonGroup, QSizePolicy, QSpinBox,
 )
-from PyQt6.QtGui import QAction, QIcon
-from PyQt6.QtCore import Qt, pyqtSlot, QSize
+from PyQt6.QtGui import QAction, QCursor, QIcon
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize
 from core.splitter import MODES, SplitterThread, existing_stems, normalize_mode, stems_in
+from core.stemload import StemLoadThread, normalize_timeout
 from core.waveform import min_max_envelope
 from core.player import PlayerThread
 from ui.stem_view import AUDIO_EXTENSIONS, StemView
@@ -25,6 +26,11 @@ log = logging.getLogger(__name__)
 AUDIO_FILTER = "Audio files (" + " ".join(f"*{e}" for e in sorted(AUDIO_EXTENSIONS)) + ")"
 
 
+# While stems load in the background the pointer is a busy one at once; the window only locks
+# (and greys out) if the load is still going after this long, so quick loads do not flash.
+STEM_LOCK_DELAY_MS = 250
+
+
 class SettingsDialog(QDialog):
     def __init__(self, config: Config, parent=None):
         super().__init__(parent)
@@ -35,6 +41,13 @@ class SettingsDialog(QDialog):
         self.recordings_edit = QLineEdit(config["recordings_dir"])
         self.recordings_edit.setToolTip("The Open dialog starts in this folder")
         self.stems_edit = QLineEdit(config["stems_dir"])
+        self.timeout_spin = QSpinBox()
+        self.timeout_spin.setRange(1, 3600)
+        self.timeout_spin.setSuffix(" s")
+        self.timeout_spin.setValue(int(normalize_timeout(config["stem_load_timeout_s"])))
+        self.timeout_spin.setToolTip(
+            "Loading a song's stems is stopped after this long. Raise it for very long songs "
+            "or a slow disk.")
         # Radio buttons for logging level.
         self.debug_radio = QRadioButton("DEBUG")
         self.info_radio = QRadioButton("INFO")
@@ -56,6 +69,7 @@ class SettingsDialog(QDialog):
 
         layout.addRow("Audio folder:", self.recordings_edit)
         layout.addRow("Stems folder:", self.stems_edit)
+        layout.addRow("Stem loading timeout:", self.timeout_spin)
         # Container for radio buttons.
         radio_container = QHBoxLayout()
         radio_container.addWidget(self.debug_radio)
@@ -75,6 +89,7 @@ class SettingsDialog(QDialog):
     def accept(self):
         self.config["recordings_dir"] = self.recordings_edit.text()
         self.config["stems_dir"] = self.stems_edit.text()
+        self.config["stem_load_timeout_s"] = self.timeout_spin.value()
         # Determine selected logging level.
         level = "DEBUG" if self.debug_radio.isChecked() else (
             "INFO" if self.info_radio.isChecked() else "ERROR"
@@ -100,6 +115,19 @@ class MainWindow(QMainWindow):
         self._player = None
         self._player_is_stems = False  # the one player serves either the loaded file or the stems
         self._splitter = None
+        # Stems are read on a worker thread (see _show_stems). Loaders that were given up on stay
+        # referenced until they finish: a QThread must not be destroyed while it runs.
+        self._stem_loader = None
+        self._stem_then = None
+        self._stale_loaders = set()
+        self._busy_cursor = False
+        self._locked = False
+        self._lock_timer = QTimer(self)
+        self._lock_timer.setSingleShot(True)
+        self._lock_timer.timeout.connect(self._lock_window)
+        self._timeout_timer = QTimer(self)
+        self._timeout_timer.setSingleShot(True)
+        self._timeout_timer.timeout.connect(self._stem_load_timed_out)
 
         if initial_file:
             self._open_initial_file(Path(initial_file))
@@ -113,6 +141,7 @@ class MainWindow(QMainWindow):
 
     def _setup_toolbar(self):
         tb = QToolBar("Main")
+        self._toolbar = tb
         self.addToolBar(tb)
         settings_action = QAction("Settings", self)
         settings_action.triggered.connect(self._open_settings)
@@ -294,6 +323,7 @@ class MainWindow(QMainWindow):
     def _load_file(self, path: Path):
         """Load an audio file and display its waveform."""
         log.info("Loading file: %s", path)
+        self._abandon_stem_load()  # stems still loading belong to the previous file
 
         # Clear previous waveform data
         self.waveform.clear()
@@ -339,11 +369,12 @@ class MainWindow(QMainWindow):
             files = existing_stems(self.config["stems_dir"], path, self.config["split_mode"])
             if not files:
                 return
-            self._show_stems(files)
-            loaded = len(self.stem_view.all_paths())
-            if loaded:
-                log.info("Found %d existing stems for %s", loaded, path.name)
-                self.statusBar().showMessage(f"Loaded: {path.name} ({loaded} stems found)")
+
+            def shown(loaded):
+                if loaded:
+                    log.info("Found %d existing stems for %s", loaded, path.name)
+                    self.statusBar().showMessage(f"Loaded: {path.name} ({loaded} stems found)")
+            self._show_stems(files, then=shown)
         except Exception:
             log.exception("Could not load existing stems for %s", path)
 
@@ -616,11 +647,97 @@ class MainWindow(QMainWindow):
         self._show_stems(files)
         self.statusBar().showMessage(f"Split finished: {len(files)} files", 3000)
 
-    def _show_stems(self, files):
-        """Put these stem files on the Split tab (replacing any earlier ones)."""
+    def stems_loading(self) -> bool:
+        return self._stem_loader is not None
+
+    def _show_stems(self, files, then=None):
+        """Put these stem files on the Split tab (replacing any earlier ones).
+
+        The files are read on a worker thread, which can take a few seconds for long songs. Until
+        it finishes the pointer is a busy one, the window locks if it takes more than
+        STEM_LOCK_DELAY_MS, and after the ``stem_load_timeout_s`` setting the wait is given up
+        with an explanation. ``then(count)`` runs once the rows are showing (not after a
+        timeout or when another load replaces this one).
+        """
+        self._abandon_stem_load()
         if self._player is not None and self._player_is_stems:
             self._drop_player()  # its stems are being replaced
-        self.stem_view.set_stems(files)
+            self.stem_view.set_playing(False)
+        loader = StemLoadThread([str(f) for f in files])
+        loader.loaded.connect(self._stem_load_finished)
+        loader.finished.connect(self._stem_loader_ended)
+        self._stem_loader = loader
+        self._stem_then = then
+        self._begin_busy()
+        loader.start()
+
+    @pyqtSlot(list)
+    def _stem_load_finished(self, result):
+        if self.sender() is not self._stem_loader:
+            return  # a load that was given up on
+        loader, then = self._stem_loader, self._stem_then
+        self._stem_loader = self._stem_then = None
+        self._stale_loaders.add(loader)  # still winding down; released in _stem_loader_ended
+        self._end_busy()
+        self.stem_view.set_loaded(result)
+        if then is not None:
+            then(len(self.stem_view.all_paths()))
+
+    @pyqtSlot()
+    def _stem_loader_ended(self):
+        self._stale_loaders.discard(self.sender())
+
+    def _abandon_stem_load(self):
+        """Stop waiting for the stems being loaded, if any; their result is dropped."""
+        loader = self._stem_loader
+        if loader is None:
+            return
+        loader.loaded.disconnect(self._stem_load_finished)
+        loader.cancel()
+        self._stale_loaders.add(loader)
+        self._stem_loader = self._stem_then = None
+        self._end_busy()
+
+    def _begin_busy(self):
+        if not self._busy_cursor:
+            QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
+            self._busy_cursor = True
+        self._lock_timer.start(STEM_LOCK_DELAY_MS)
+        seconds = normalize_timeout(self.config["stem_load_timeout_s"])
+        self._timeout_timer.start(max(1, int(seconds * 1000)))
+
+    def _end_busy(self):
+        self._lock_timer.stop()
+        self._timeout_timer.stop()
+        if self._locked:
+            self.centralWidget().setEnabled(True)
+            self._toolbar.setEnabled(True)
+            self._locked = False
+        if self._busy_cursor:
+            QApplication.restoreOverrideCursor()
+            self._busy_cursor = False
+
+    @pyqtSlot()
+    def _lock_window(self):
+        """Nothing can be clicked while the stems load (the title bar still closes the window)."""
+        if self._stem_loader is not None and not self._locked:
+            self.centralWidget().setEnabled(False)
+            self._toolbar.setEnabled(False)
+            self._locked = True
+
+    @pyqtSlot()
+    def _stem_load_timed_out(self):
+        if self._stem_loader is None:
+            return
+        seconds = normalize_timeout(self.config["stem_load_timeout_s"])
+        log.warning("Loading the stems took longer than %g s; gave up", seconds)
+        self._abandon_stem_load()
+        self.statusBar().showMessage("Loading the stems timed out", 8000)
+        QMessageBox.warning(
+            self, "Loading the stems timed out",
+            f"Loading the stems took longer than {seconds:g} seconds, so it was stopped.\n\n"
+            "If your songs are long or the disk is slow, raise \"Stem loading timeout\" in "
+            "Settings (the key is stem_load_timeout_s in config.json) and load them again.")
 
     def _make_folder_dialog(self, start: str):
         """Qt's own folder picker, so we control its wording and size.
@@ -671,18 +788,22 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "No stems found",
                                     f"There are no audio files in {folder}.")
             return
-        self._show_stems([str(p) for p in files])
-        loaded = len(self.stem_view.all_paths())
-        if loaded == 0:
-            QMessageBox.warning(self, "No stems loaded",
-                                f"None of the audio files in {folder} could be read.")
-            return
-        skipped = len(files) - loaded
-        note = f" ({skipped} unreadable, skipped)" if skipped else ""
-        log.info("Loaded %d stems from %s%s", loaded, folder, note)
-        self.statusBar().showMessage(f"Loaded {loaded} stems from {folder.name}{note}", 5000)
+
+        def shown(loaded):
+            if loaded == 0:
+                QMessageBox.warning(self, "No stems loaded",
+                                    f"None of the audio files in {folder} could be read.")
+                return
+            skipped = len(files) - loaded
+            note = f" ({skipped} unreadable, skipped)" if skipped else ""
+            log.info("Loaded %d stems from %s%s", loaded, folder, note)
+            self.statusBar().showMessage(f"Loaded {loaded} stems from {folder.name}{note}", 5000)
+        self._show_stems([str(p) for p in files], then=shown)
 
     def closeEvent(self, event):
+        self._abandon_stem_load()
+        for loader in list(self._stale_loaders):
+            loader.wait(3000)  # it stops at its next block
         if self._player is not None:
             self._player.shutdown()
         super().closeEvent(event)

@@ -21,6 +21,11 @@ def win(qtbot, monkeypatch, tmp_path):
         w._player = None
 
 
+def settle(win, qtbot):
+    """Wait until the background stem load (if any) has finished and its rows are showing."""
+    qtbot.waitUntil(lambda: not win.stems_loading(), timeout=10000)
+
+
 def test_loading_a_file_fills_waveform_and_enables_controls(win, tone_wav):
     assert not win.play_btn.isEnabled()
     win._load_file(Path(tone_wav))
@@ -102,7 +107,7 @@ def test_buttons_stay_short_and_the_path_box_takes_the_width(win):
         assert edit.x() < button.x()  # the box comes first, in front of the button
 
 
-def test_split_shows_progress_and_blocks_a_second_split(win, tone_wav, tone_flac, monkeypatch, tmp_path):
+def test_split_shows_progress_and_blocks_a_second_split(win, tone_wav, tone_flac, monkeypatch, tmp_path, qtbot):
     from PyQt6.QtCore import QObject, pyqtSignal
     win._load_file(Path(tone_wav))
     win.config["stems_dir"] = str(tmp_path / "stems")
@@ -128,6 +133,7 @@ def test_split_shows_progress_and_blocks_a_second_split(win, tone_wav, tone_flac
         shutil.copy(tone_flac, dest)
         stems.append(str(dest))
     win._splitter.finished.emit(stems)
+    settle(win, qtbot)
     assert win.split_btn.isEnabled()
     assert [Path(p).stem for p in win.stem_view.all_paths()] == ["vocals", "guitar"]
 
@@ -380,41 +386,46 @@ def _make_track_stems(tmp_path, tone_flac, subdir, names, track="tone"):
     return folder
 
 
-def test_loading_a_file_also_loads_its_existing_stems(win, tone_wav, tone_flac, tmp_path):
+def test_loading_a_file_also_loads_its_existing_stems(win, tone_wav, tone_flac, tmp_path, qtbot):
     _make_track_stems(tmp_path, tone_flac, "htdemucs_6s", ("vocals", "drums", "bass"))
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     assert [Path(p).stem for p in win.stem_view.all_paths()] == ["vocals", "drums", "bass"]
     assert "3 stems found" in win.statusBar().currentMessage()
 
 
-def test_loading_a_file_with_no_stems_leaves_the_split_tab_alone(win, tone_wav, tone_flac, tmp_path):
+def test_loading_a_file_with_no_stems_leaves_the_split_tab_alone(win, tone_wav, tone_flac, tmp_path, qtbot):
     other = _make_track_stems(tmp_path, tone_flac, "htdemucs_6s", ("vocals",), track="another song")
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     assert win.stem_view.all_paths() == []
     assert win.statusBar().currentMessage() == "Loaded: tone.wav"
     assert other.is_dir()
 
 
-def test_existing_stems_of_the_selected_mode_win_over_other_modes(win, tone_wav, tone_flac, tmp_path):
+def test_existing_stems_of_the_selected_mode_win_over_other_modes(win, tone_wav, tone_flac, tmp_path, qtbot):
     _make_track_stems(tmp_path, tone_flac, "htdemucs_6s", ("vocals", "drums", "bass"))
     _make_track_stems(tmp_path, tone_flac, "two_stem/htdemucs", ("vocals", "no_vocals"))
     win.config["split_mode"] = "2"
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     assert [Path(p).stem for p in win.stem_view.all_paths()] == ["vocals", "no_vocals"]
 
 
-def test_stems_of_another_mode_are_used_when_the_selected_mode_has_none(win, tone_wav, tone_flac, tmp_path):
+def test_stems_of_another_mode_are_used_when_the_selected_mode_has_none(win, tone_wav, tone_flac, tmp_path, qtbot):
     _make_track_stems(tmp_path, tone_flac, "htdemucs", ("vocals", "drums", "bass", "other"))
     win.config["split_mode"] = "6"
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     assert len(win.stem_view.all_paths()) == 4
 
 
-def test_unreadable_existing_stems_do_not_break_loading_the_file(win, tone_wav, tmp_path):
+def test_unreadable_existing_stems_do_not_break_loading_the_file(win, tone_wav, tmp_path, qtbot):
     folder = tmp_path / "stems" / "htdemucs_6s" / "tone"
     folder.mkdir(parents=True)
     (folder / "vocals.flac").write_bytes(b"not audio")
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     assert win.waveform.has_data()
     assert win.stem_view.all_paths() == []
 
@@ -428,11 +439,12 @@ def _pick_folder(monkeypatch, folder, seen=None):
     monkeypatch.setattr(MainWindow, "_choose_stems_folder", fake)
 
 
-def test_load_stems_shows_every_audio_file_in_the_folder(win, stem_files, monkeypatch):
+def test_load_stems_shows_every_audio_file_in_the_folder(win, stem_files, monkeypatch, qtbot):
     folder = Path(stem_files[0]).parent
     (folder / "notes.txt").write_text("not audio")
     _pick_folder(monkeypatch, folder)
     win.load_stems_btn.click()
+    settle(win, qtbot)
     assert [Path(p).stem for p in win.stem_view.all_paths()] == ["vocals", "guitar", "other"]
     assert win.stem_view.play_btn.isEnabled()
 
@@ -476,11 +488,12 @@ def test_folder_without_audio_is_reported_and_keeps_the_current_stems(win, stem_
     assert win.stem_view.all_paths() == before
 
 
-def test_unreadable_audio_is_skipped_not_fatal(win, stem_files, monkeypatch):
+def test_unreadable_audio_is_skipped_not_fatal(win, stem_files, monkeypatch, qtbot):
     folder = Path(stem_files[0]).parent
     (folder / "broken.flac").write_bytes(b"this is not audio")
     _pick_folder(monkeypatch, folder)
     win.load_stems_btn.click()
+    settle(win, qtbot)
     assert "broken" not in [Path(p).stem for p in win.stem_view.all_paths()]
     assert len(win.stem_view.all_paths()) == 3
     assert "1 unreadable" in win.statusBar().currentMessage()
@@ -615,3 +628,133 @@ def test_no_startup_file_leaves_the_window_empty(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)
     assert w._current_file is None and not w.play_btn.isEnabled()
+
+
+# --- loading stems in the background: busy pointer, lock, timeout ------------
+
+@pytest.fixture
+def slow_loader(monkeypatch):
+    """Make every stem load wait for ``gate`` (or for its own cancel) before it starts reading."""
+    import threading
+    import time
+    from core.stemload import StemLoadThread
+    gate = threading.Event()
+    real_run = StemLoadThread.run
+
+    def slow_run(self):
+        while not gate.is_set() and not self._cancelled:
+            time.sleep(0.005)
+        real_run(self)
+
+    monkeypatch.setattr(StemLoadThread, "run", slow_run)
+    yield gate
+    gate.set()
+
+
+def _wait_cursor():
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
+    cur = QApplication.overrideCursor()
+    return cur is not None and cur.shape() == Qt.CursorShape.WaitCursor
+
+
+def _no_override_cursor():
+    from PyQt6.QtWidgets import QApplication
+    return QApplication.overrideCursor() is None
+
+
+def test_a_slow_load_shows_a_busy_pointer_then_locks_the_window(win, stem_files, slow_loader, monkeypatch, qtbot):
+    import ui.main_window as mw
+    monkeypatch.setattr(mw, "STEM_LOCK_DELAY_MS", 30)
+    _pick_folder(monkeypatch, Path(stem_files[0]).parent)
+    win.load_stems_btn.click()
+    assert win.stems_loading() and _wait_cursor()           # at once ...
+    assert win.centralWidget().isEnabled()                   # ... but not locked yet
+    qtbot.waitUntil(lambda: not win.centralWidget().isEnabled(), timeout=3000)
+    assert not win._toolbar.isEnabled()
+    slow_loader.set()
+    settle(win, qtbot)
+    assert _no_override_cursor()
+    assert win.centralWidget().isEnabled() and win._toolbar.isEnabled()
+    assert len(win.stem_view.all_paths()) == 3
+
+
+def test_a_quick_load_never_locks_the_window(win, stem_files, monkeypatch, qtbot):
+    locked = []
+    monkeypatch.setattr(MainWindow, "_lock_window", lambda self: locked.append(True))
+    _pick_folder(monkeypatch, Path(stem_files[0]).parent)
+    win.load_stems_btn.click()
+    settle(win, qtbot)
+    assert len(win.stem_view.all_paths()) == 3
+    assert not locked and _no_override_cursor() and win.centralWidget().isEnabled()
+
+
+def test_a_load_that_takes_too_long_is_given_up_with_an_explanation(win, stem_files, slow_loader, monkeypatch, qtbot):
+    from PyQt6.QtWidgets import QMessageBox
+    shown = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda parent, title, text, *a: shown.append((title, text)))
+    win.stem_view.set_stems(stem_files[:1])               # what is showing must survive the timeout
+    before = win.stem_view.all_paths()
+    win.config["stem_load_timeout_s"] = 0.05
+    _pick_folder(monkeypatch, Path(stem_files[0]).parent)
+    win.load_stems_btn.click()
+    qtbot.waitUntil(lambda: bool(shown), timeout=3000)
+    (title, text), = shown
+    assert "timed out" in title
+    assert "0.05 seconds" in text and "Stem loading timeout" in text and "Settings" in text
+    assert "stem_load_timeout_s" in text
+    assert not win.stems_loading() and _no_override_cursor() and win.centralWidget().isEnabled()
+    slow_loader.set()                                       # the stopped load must not appear late
+    qtbot.waitUntil(lambda: not win._stale_loaders, timeout=5000)
+    assert win.stem_view.all_paths() == before
+
+
+def test_a_newer_load_replaces_one_still_running(win, stem_files, tone_flac, slow_loader, monkeypatch, qtbot, tmp_path):
+    import shutil
+    other = tmp_path / "other_stems"
+    other.mkdir()
+    shutil.copy(tone_flac, other / "bass.flac")
+    _pick_folder(monkeypatch, Path(stem_files[0]).parent)
+    win.load_stems_btn.click()
+    first = win._stem_loader
+    _pick_folder(monkeypatch, other)
+    win.load_stems_btn.click()
+    assert win._stem_loader is not first
+    slow_loader.set()
+    settle(win, qtbot)
+    qtbot.waitUntil(lambda: not win._stale_loaders, timeout=5000)
+    assert [Path(p).stem for p in win.stem_view.all_paths()] == ["bass"]
+    assert _no_override_cursor()
+
+
+def test_closing_the_window_during_a_load_stops_it_cleanly(win, stem_files, slow_loader, monkeypatch, qtbot):
+    _pick_folder(monkeypatch, Path(stem_files[0]).parent)
+    win.load_stems_btn.click()
+    loader = win._stem_loader
+    win.close()
+    assert not loader.isRunning() and not win.stems_loading()
+    assert _no_override_cursor()
+
+
+def test_the_timeout_is_a_setting_with_a_default(win):
+    import config as cfg
+    from ui.main_window import SettingsDialog
+    from core.stemload import DEFAULT_TIMEOUT_S
+    assert cfg.DEFAULT_CONFIG["stem_load_timeout_s"] == DEFAULT_TIMEOUT_S
+    dlg = SettingsDialog(win.config)
+    assert dlg.timeout_spin.value() == int(DEFAULT_TIMEOUT_S)
+    dlg.timeout_spin.setValue(120)
+    dlg.accept()
+    assert win.config["stem_load_timeout_s"] == 120
+    assert '"stem_load_timeout_s": 120' in cfg.CONFIG_PATH.read_text()
+
+
+def test_a_nonsense_timeout_in_the_config_falls_back_to_the_default(win, stem_files, monkeypatch, qtbot):
+    from core.stemload import DEFAULT_TIMEOUT_S
+    win.config["stem_load_timeout_s"] = "soon"
+    seen = []
+    monkeypatch.setattr(win._timeout_timer, "start", lambda ms: seen.append(ms))
+    _pick_folder(monkeypatch, Path(stem_files[0]).parent)
+    win.load_stems_btn.click()
+    settle(win, qtbot)
+    assert seen == [int(DEFAULT_TIMEOUT_S * 1000)]
