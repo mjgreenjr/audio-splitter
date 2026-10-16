@@ -50,7 +50,7 @@ Stems are saved as FLAC in `~/Music/audio-splitter/stems/<model>/<song>/`.
 | What | Where |
 |---|---|
 | Stems | `~/Music/audio-splitter/stems` |
-| Program, settings (`config.json`), logs | `~/.local/share/audio-splitter/app` |
+| Program, settings (`config.toml`), logs | `~/.local/share/audio-splitter/app` |
 | Private Python environment | `~/.local/share/audio-splitter/venv` |
 | Launcher, menu entry | `~/.local/bin/audio-splitter`, `~/.local/share/applications/` |
 | Demucs models | `~/.cache/huggingface` |
@@ -58,6 +58,11 @@ Stems are saved as FLAC in `~/Music/audio-splitter/stems/<model>/<song>/`.
 The stems folder, the folder the Open dialog starts in, and how long the app waits for a song's
 stems to load (60 seconds by default; raise it for very long songs) can be changed on the
 Settings tab.
+
+The settings file, `config.toml`, lists every setting with its default and what it does, commented
+out. To change one by hand, remove the `# ` in front of it. When the app is updated, the file is
+rebuilt with the new settings and descriptions, and what you set is kept (the old file is saved as
+`config.toml.bak`). Comments you add yourself are not kept.
 
 ## Uninstall
 

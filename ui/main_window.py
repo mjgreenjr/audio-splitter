@@ -700,7 +700,7 @@ class MainWindow(QMainWindow):
             self, f"Loading {what} timed out",
             f"Loading {what} took longer than {seconds:g} seconds, so it was stopped.\n\n"
             "If your songs are long or the disk is slow, raise \"Loading timeout\" in "
-            "Settings (the key is stem_load_timeout_s in config.json) and load them again.")
+            "Settings (the key is stem_load_timeout_s in config.toml) and load them again.")
 
     def _make_folder_dialog(self, start: str):
         """Qt's own folder picker, so we control its wording and size.

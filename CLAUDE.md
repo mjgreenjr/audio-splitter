@@ -28,7 +28,7 @@ separation runs `demucs` as a subprocess.
 
 `./install.sh` (see `README.md`) installs for the current user without a hand-made venv: a private
 Python 3.12 env in `~/.local/share/audio-splitter/venv`, the app copied to `.../app` (with its own
-`config.json` and `logs/`), a launcher `~/.local/bin/audio-splitter [file]` that runs from
+`config.toml` and `logs/`), a launcher `~/.local/bin/audio-splitter [file]` that runs from
 `~/Music/audio-splitter/` (so the relative `stems` default lands there and a relative file argument
 is made absolute first), a menu entry, and the Demucs models pre-downloaded. It installs from
 `requirements-lock.txt` minus the test packages, so **a new runtime dependency must go in both
@@ -44,13 +44,25 @@ the full package list, an Omarchy one already has most of it.
 
 ## Layout
 
-- `main.py` – entry point; sets up logging from `config.json`, opens `MainWindow` (optionally on a
+- `main.py` – entry point; sets up logging from `config.toml`, opens `MainWindow` (optionally on a
   file given as the first argument).
-- `config.py` / `config.json` (untracked) – tiny JSON-backed settings: `recordings_dir` (where the
-  Open dialog starts), `stems_dir`, `split_mode`, `stem_load_timeout_s` (seconds before loading a
-  song's stems is given up, default 60), `logging`. `Config` starts from `DEFAULT_CONFIG` and
-  overlays the file, so a new key only needs a default; there is no version field or migration
-  (a rename or a changed meaning would need one).
+- `config.py` / `config.toml` (untracked) – the settings, as a commented template the program owns:
+  every setting is listed with its default and a description (`SETTINGS`, one table, so the file
+  and the code cannot drift); lines the user uncommented are theirs and kept, commented ones are
+  regenerated. Keys: `recordings_dir` (where the Open dialog starts), `stems_dir`, `split_mode`,
+  `stem_load_timeout_s` (seconds before loading is given up, default 60), `logging`. `Config.save`
+  writes only values that differ from the default. The file is stamped `[meta] config_version`
+  (the app version from `version.py`, the single source). When the app's major or minor is newer
+  than the file's, `migrate` backs up to `config.toml.bak`, keeps the set values, ports renames
+  (`RENAMES`), moves unknown keys to a "retired settings" ledger at the bottom and regenerates the
+  rest. A file from a newer version is read but never rewritten; a broken one is backed up and
+  replaced by defaults. A missing file is created. An old `config.json` is imported once (values
+  equal to the default are dropped) and kept as `config.json.bak`. **Any change to a setting
+  (add, remove, rename, new default or wording) needs a minor bump of `version.py`**, a migration
+  test, a `Version-relevant:` line in the commit, and a golden-template check:
+  `tests/golden/config_template.txt` is the template of the last release; the test fails until the
+  version is bumped, and the golden file is refreshed only when cutting a release. Comments typed
+  into the file are not preserved. Every setting applies as soon as it is saved (no restart).
 - `core/player.py` – `PlayerThread`, the playback engine (see below).
 - `core/splitter.py` – `SplitterThread`: runs Demucs and writes 16-bit FLAC stems. The Split tab
   picks a mode (`MODES`, config key `split_mode`, default `"6"`): **6** = `htdemucs_6s` (vocals,
@@ -83,7 +95,7 @@ back). There is no toolbar. Switching between Playback and Split stops playback;
   (no axes, fixed shared scale) for the stem rows. The time axis (`TimeAxis`) labels m:ss
   (h:mm:ss from an hour) with ticks on round times; a switched-off stem is drawn in a muted blue
   (`set_dimmed`; opaque, since a transparent pen piles up on dense curves and looks solid).
-- `stems/`, `logs/`, `.venv/`, `config.json` are gitignored.
+- `stems/`, `logs/`, `.venv/`, `config.toml` (and its `.bak`) are gitignored.
 
 Both file pickers (Load from File, Load Stems…) are Qt's own dialogs, not the system ones, so their
 size and wording are ours: as wide as the app window (480-900 px, so the buttons stay on screen when
@@ -132,7 +144,7 @@ pytest                 # fast suite (~20 s): config, player, UI, waveform, split
 pytest -m slow         # real Demucs separation (downloads the models the first time)
 ```
 
-Tests live in `tests/`, never touch the real `config.json` (an autouse fixture redirects it) and run
+Tests live in `tests/`, never touch the real `config.toml` (an autouse fixture redirects it) and run
 Qt offscreen with `SDL_AUDIODRIVER=dummy`, so nothing is audible. `pytest.ini` pins `qt_api = pyqt6`
 (PySide6 may also be installed and pytest-qt would otherwise pick it). `ffplay_pids()` in
 `tests/conftest.py` anchors on `^ffplay ` (a shell script that merely mentions ffplay and the needle
@@ -146,8 +158,8 @@ checks (does it sound right, does dragging feel right) still need a manual run o
   piece of work is done and verified; push only when asked.
 - Commit messages are short and imperative, describing the behavior change.
 - Keep `CHANGELOG.md` up to date: add user-visible changes (added / changed / fixed / removed) under
-  the newest date heading when you commit them. There are no version numbers yet; if the project
-  starts using them, propose a scheme first.
+  the newest date heading when you commit them. The version is in `version.py` (see `config.py`
+  above for when it must move); do not tag or release unless asked.
 - The project is GPL-3.0-or-later (`LICENSE`), because PyQt6 is GPL v3 (or a paid commercial
   licence). Moving to PySide6 (LGPL) would allow a more permissive licence. The Demucs code is MIT;
   no licence is stated for the model weights. They are downloaded by the installer from the

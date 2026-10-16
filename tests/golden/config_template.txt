@@ -1,0 +1,29 @@
+# audio-splitter settings
+#
+# Every setting is listed below with its default, commented out. To change one, remove the
+# leading "# " and edit the value; the Settings tab does the same when you press Save.
+# The program rewrites this file when it is updated: what you set is kept, comments you add
+# yourself are not, and settings that no longer exist move to the list at the bottom.
+
+# Folder the Load from File dialog starts in.
+# recordings_dir = "recordings"
+
+# Where the stems of a split are written, and where Load Stems starts. A relative path is relative
+# to the folder the program was started from.
+# stems_dir = "stems"
+
+# How many stems the Split tab makes: "6" (vocals, drums, bass, guitar, piano, other), "4"
+# (without guitar and piano) or "2" (vocals and everything else). The Split tab remembers the
+# choice here.
+# split_mode = "6"
+
+# Seconds to wait for a song or its stems to load before giving up (raise it for very long songs
+# or a slow disk). Not a positive number: the default of 60 is used.
+# stem_load_timeout_s = 60
+
+# How much is written to the log in logs/: "DEBUG" (most), "INFO" or "ERROR" (least).
+# logging = "DEBUG"
+
+[meta]
+# Written by the program; do not edit.
+config_version = "0.1.0"

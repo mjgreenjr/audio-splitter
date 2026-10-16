@@ -16,9 +16,9 @@ import soundfile as sf
 
 @pytest.fixture(autouse=True)
 def isolated_config(tmp_path_factory, monkeypatch):
-    """Tests never read or write the real config.json (it holds the user's settings)."""
+    """Tests never read or write the real config.toml (it holds the user's settings)."""
     import config
-    monkeypatch.setattr(config, "CONFIG_PATH", tmp_path_factory.mktemp("cfg") / "config.json")
+    monkeypatch.setattr(config, "CONFIG_PATH", tmp_path_factory.mktemp("cfg") / "config.toml")
 
 
 @pytest.fixture(autouse=True)

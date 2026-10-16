@@ -14,7 +14,7 @@
 #
 # Layout (with the default prefix ~/.local):
 #   ~/.local/share/audio-splitter/venv   private Python environment
-#   ~/.local/share/audio-splitter/app    the program, plus config.json and logs/
+#   ~/.local/share/audio-splitter/app    the program, plus config.toml and logs/
 #   ~/.local/bin/audio-splitter          launcher
 #   ~/Music/audio-splitter/              stems/ (the launcher runs there)
 set -euo pipefail
@@ -95,10 +95,10 @@ done
 # ---------------------------------------------------------------- app files
 say "Copying the app to $APP"
 mkdir -p "$APP"
-# Replace the code but keep config.json and logs/ from earlier installs.
+# Replace the code but keep config.toml and logs/ from earlier installs.
 rm -rf "$APP/core" "$APP/ui"
 cp -r "$SRC_DIR/core" "$SRC_DIR/ui" "$APP/"
-cp "$SRC_DIR/main.py" "$SRC_DIR/config.py" "$APP/"
+cp "$SRC_DIR/main.py" "$SRC_DIR/config.py" "$SRC_DIR/version.py" "$APP/"
 find "$APP" -name __pycache__ -type d -prune -exec rm -rf {} +
 
 # ---------------------------------------------------------------- python environment

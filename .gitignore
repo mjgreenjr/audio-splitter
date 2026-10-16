@@ -5,4 +5,7 @@ venv/
 recordings/
 stems/
 logs/
+config.toml
+config.toml.bak
 config.json
+config.json.bak

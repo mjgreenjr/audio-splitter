@@ -1,3 +1,4 @@
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -375,18 +376,18 @@ def test_choosing_a_split_mode_is_remembered_and_used(win, tone_wav, monkeypatch
     settle(win, qtbot)
     win.config["stems_dir"] = str(tmp_path / "stems")
     win.split_mode_combo.setCurrentIndex(win.split_mode_combo.findData("2"))
-    assert json.loads(cfg.CONFIG_PATH.read_text())["split_mode"] == "2"
+    assert tomllib.loads(cfg.CONFIG_PATH.read_text())["split_mode"] == "2"
     win._start_split()
     assert seen["mode"] == "2"
 
 
 def test_split_mode_in_config_is_restored_at_startup(qtbot, monkeypatch):
     import config as cfg
-    cfg.CONFIG_PATH.write_text('{"split_mode": "4"}')
+    cfg.CONFIG_PATH.write_text('split_mode = "4"\n')
     w = MainWindow()
     qtbot.addWidget(w)
     assert w.split_mode_combo.currentData() == "4"
-    cfg.CONFIG_PATH.write_text('{"split_mode": "bogus"}')
+    cfg.CONFIG_PATH.write_text('split_mode = "bogus"\n')
     w2 = MainWindow()
     qtbot.addWidget(w2)
     assert w2.split_mode_combo.currentData() == "6"
@@ -759,7 +760,7 @@ def test_closing_the_window_during_a_load_stops_it_cleanly(win, stem_files, slow
 def test_the_timeout_has_a_default_in_the_config():
     import config as cfg
     from core.stemload import DEFAULT_TIMEOUT_S
-    assert cfg.DEFAULT_CONFIG["stem_load_timeout_s"] == DEFAULT_TIMEOUT_S
+    assert cfg.DEFAULTS["stem_load_timeout_s"] == DEFAULT_TIMEOUT_S
 
 
 def test_a_nonsense_timeout_in_the_config_falls_back_to_the_default(win, stem_files, monkeypatch, qtbot):
@@ -794,12 +795,12 @@ def test_nothing_is_saved_until_save_is_pressed(win):
     sv = win.settings_view
     sv.stems_edit.setText("/somewhere/else")
     sv.timeout_spin.setValue(120)
-    assert win.config["stems_dir"] != "/somewhere/else" and not cfg.CONFIG_PATH.exists()
+    assert win.config["stems_dir"] != "/somewhere/else" and "stems_dir" not in tomllib.loads(cfg.CONFIG_PATH.read_text())
     sv.save_btn.click()
     assert win.config["stems_dir"] == "/somewhere/else"
     assert win.config["stem_load_timeout_s"] == 120
-    saved = cfg.CONFIG_PATH.read_text()
-    assert '"stems_dir": "/somewhere/else"' in saved and '"stem_load_timeout_s": 120' in saved
+    saved = tomllib.loads(cfg.CONFIG_PATH.read_text())
+    assert saved["stems_dir"] == "/somewhere/else" and saved["stem_load_timeout_s"] == 120
     assert win.statusBar().currentMessage() == "Settings saved"
 
 

@@ -1,13 +1,19 @@
 # Changelog
 
-Notable changes to audio-splitter, newest first. The project has no version numbers yet, so
-entries are grouped by date.
+Notable changes to audio-splitter, newest first, grouped by date. Version numbers start at 0.1.0
+on 2026-10-16.
 
 Everything before 2026-10-13 was written up afterwards from the commit messages of the project's
 earlier development history (before this repository's first commit). It is condensed to playback,
 stem splitting and installation.
 
-## 2026-10-16
+## 2026-10-16 (version 0.1.0)
+
+### Added
+- Versions: the app is now 0.1.0 (`version.py`).
+- Settings live in `config.toml`, a commented template: every setting is listed with its default and
+  what it does, and what you set is kept when the app is updated (see "Changed"). An existing
+  `config.json` is imported on the first run and kept as `config.json.bak`.
 
 ### Changed
 - Loading an audio file no longer freezes the window: it loads in the background like the stems
