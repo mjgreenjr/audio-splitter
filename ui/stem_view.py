@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 from core.waveform import envelope_from_file
+from ui.volume_control import VolumeControl
 from ui.waveform_view import WaveformWidget
 
 log = logging.getLogger(__name__)
@@ -67,6 +68,8 @@ class StemView(QWidget):
             buttons.addWidget(b)
             b.setEnabled(False)
         buttons.addStretch(1)
+        self.volume_control = VolumeControl()   # on the right, away from the transport buttons
+        buttons.addWidget(self.volume_control)
         outer.addLayout(buttons)
 
         self.skip_back_btn.clicked.connect(self.skip_back_clicked)

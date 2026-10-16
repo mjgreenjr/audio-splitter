@@ -7,6 +7,14 @@ Everything before 2026-10-13 was written up afterwards from the commit messages 
 earlier development history (before this repository's first commit). It is condensed to playback,
 stem splitting and installation.
 
+## 2026-10-16 (version 0.2.0)
+
+### Added
+- A volume control (speaker button and slider) at the right of the buttons on the Playback and Split
+  tabs. It sets the volume of the app's own playback, not of the output device; the speaker mutes.
+  The level is remembered (`volume` in `config.toml`, 0-100, default 100). While playing, a change
+  takes effect a moment after the slider stops, with a brief restart of the sound, like a seek.
+
 ## 2026-10-16 (version 0.1.0)
 
 ### Added

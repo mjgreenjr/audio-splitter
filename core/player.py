@@ -38,6 +38,13 @@ def _ms_to_ffplay_ss(position_ms: int) -> str:
     return f"{max(0, position_ms) / 1000:.3f}"
 
 
+def normalize_volume(value) -> int:
+    """A volume setting as whole percent 0-100; anything that is not a number is 100 (full)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+        return 100
+    return max(0, min(100, int(round(value))))
+
+
 def _lavfi_escape(path: str) -> str:
     """Escape a file name for amovie's filename option inside a filter graph.
 
@@ -75,8 +82,9 @@ class PlayerThread(QThread):
     _timer_start_requested = pyqtSignal()
     _timer_stop_requested = pyqtSignal()
 
-    def __init__(self, file_path, parent=None):
-        """``file_path`` is one audio file, or a non-empty list of stem files to mix."""
+    def __init__(self, file_path, parent=None, volume=100):
+        """``file_path`` is one audio file, or a non-empty list of stem files to mix.
+        ``volume`` is ffplay's own level in percent (not the output device's)."""
         super().__init__(parent)
         if isinstance(file_path, (list, tuple)):
             if not file_path:
@@ -87,6 +95,7 @@ class PlayerThread(QThread):
             self._mix = None                          # plain single-file playback
             self.file_path = file_path
 
+        self._volume = normalize_volume(volume)
         self._lock = threading.Lock()
         self._wake = threading.Event()
         self._stop_thread = False
@@ -186,6 +195,20 @@ class PlayerThread(QThread):
             self._kill_process()
             self._wake.set()
 
+    @pyqtSlot(int)
+    def set_volume(self, percent):
+        """Change ffplay's volume (0-100). ffplay only takes it at start, so while playing this
+        restarts the one process from the current position, like a seek; otherwise it applies
+        at the next start."""
+        with self._lock:
+            self._volume = normalize_volume(percent)
+            position = self._position
+        self.seek(position)
+
+    def volume(self):
+        with self._lock:
+            return self._volume
+
     @pyqtSlot(list)
     def set_sources(self, paths):
         """Change which stems are mixed. Restarts from the current position if playing."""
@@ -255,11 +278,13 @@ class PlayerThread(QThread):
         self._kill_process()
         with self._lock:
             mix = None if self._mix is None else list(self._mix)
+            volume = self._volume
         if mix is None:
             source = ["-ss", _ms_to_ffplay_ss(start_ms), str(self.file_path)]
         else:
             source = ["-f", "lavfi", mix_graph(mix, start_ms, self.duration)]
-        cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "error"] + source
+        cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "error",
+               "-volume", str(volume)] + source
         log.info("Starting ffplay: %s", " ".join(cmd))
         # Spawn and register under one lock hold, so a concurrent stop()
         # either kills this exact process or provably happens-before it.

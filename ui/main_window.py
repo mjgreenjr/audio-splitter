@@ -12,9 +12,10 @@ from PyQt6.QtGui import QCursor, QIcon
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize
 from core.splitter import MODES, SplitterThread, existing_stems, normalize_mode, stems_in
 from core.stemload import StemLoadThread, normalize_timeout
-from core.player import PlayerThread
+from core.player import PlayerThread, normalize_volume
 from ui.settings_view import SettingsView
 from ui.stem_view import AUDIO_EXTENSIONS, StemView
+from ui.volume_control import VolumeControl
 from ui.waveform_view import WaveformWidget
 from config import Config
 from core.logger import setup_logging
@@ -28,6 +29,9 @@ AUDIO_FILTER = "Audio files (" + " ".join(f"*{e}" for e in sorted(AUDIO_EXTENSIO
 # While stems load in the background the pointer is a busy one at once; the window only locks
 # (and greys out) if the load is still going after this long, so quick loads do not flash.
 STEM_LOCK_DELAY_MS = 250
+# A moving volume slider changes ffplay's level (a restart of the one process) this long after
+# it stops, not on every step.
+VOLUME_APPLY_DELAY_MS = 150
 
 
 class MainWindow(QMainWindow):
@@ -39,6 +43,10 @@ class MainWindow(QMainWindow):
 
         self.config = Config()
         setup_logging(self.config["logging"])
+        self._volume = normalize_volume(self.config["volume"])
+        self._volume_timer = QTimer(self)
+        self._volume_timer.setSingleShot(True)
+        self._volume_timer.timeout.connect(self._apply_volume)
 
         self._setup_tabs()
 
@@ -128,7 +136,9 @@ class MainWindow(QMainWindow):
         button_layout.setContentsMargins(0, 0, 0, 0)
         for b in (self.skip_back_btn, self.play_btn, self.stop_btn, self.skip_fwd_btn):
             button_layout.addWidget(b)
-        button_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        button_layout.addStretch(1)
+        self.volume_control = VolumeControl()
+        button_layout.addWidget(self.volume_control)
         play_layout.addLayout(button_layout)
         # Keep the layout anchored to the top.
         play_layout.addStretch(1)
@@ -182,6 +192,10 @@ class MainWindow(QMainWindow):
         self.stem_view.stop_clicked.connect(self._on_stem_stop_clicked)
         self.stem_view.skip_back_clicked.connect(self._on_stem_skip_backward)
         self.stem_view.skip_forward_clicked.connect(self._on_stem_skip_forward)
+        # One volume for both tabs (there is one player); each control shows the same level.
+        for control in (self.volume_control, self.stem_view.volume_control):
+            control.set_volume(self._volume)
+            control.changed.connect(self._volume_moved)
         split_layout.addStretch(1)
 
         split_scroll = QScrollArea()
@@ -303,7 +317,7 @@ class MainWindow(QMainWindow):
                 self._player_is_stems or self._player.file_path != str(self._current_file)):
             self._drop_player()
         if self._player is None:
-            self._player = PlayerThread(str(self._current_file))
+            self._player = PlayerThread(str(self._current_file), volume=self._volume)
             self._player_is_stems = False
             self._player.position_ms.connect(self.waveform.update_position)
             self._player.finished.connect(self._playback_finished)
@@ -331,7 +345,7 @@ class MainWindow(QMainWindow):
             self._drop_player()
         if self._player is None:
             stems = self.stem_view.all_paths()
-            self._player = PlayerThread(stems)
+            self._player = PlayerThread(stems, volume=self._volume)
             self._player_is_stems = True
             self._player.set_sources(self.stem_view.enabled_paths())
             self._player.position_ms.connect(self.stem_view.update_position)
@@ -435,6 +449,25 @@ class MainWindow(QMainWindow):
             self.settings_view.save()
             return True
         return answer == buttons.Discard
+
+    @pyqtSlot(int)
+    def _volume_moved(self, value):
+        self._volume = value
+        for control in (self.volume_control, self.stem_view.volume_control):
+            if control.volume() != value:
+                control.set_volume(value)
+        self._volume_timer.start(VOLUME_APPLY_DELAY_MS)
+
+    @pyqtSlot()
+    def _apply_volume(self):
+        """The slider has settled: remember the level and give it to the player."""
+        self._save_volume()
+        if self._player is not None:
+            self._player.set_volume(self._volume)
+
+    def _save_volume(self):
+        self.config["volume"] = self._volume
+        self.config.save()
 
     @pyqtSlot()
     def _settings_saved(self):
@@ -767,6 +800,9 @@ class MainWindow(QMainWindow):
         if self._shown_tab == self._settings_tab and not self._leave_settings():
             event.ignore()  # the user chose Cancel on the unsaved settings
             return
+        if self._volume_timer.isActive():
+            self._volume_timer.stop()
+            self._save_volume()
         self._abandon_load()
         for loader in list(self._stale_loaders):
             loader.wait(3000)  # it stops at its next block

@@ -1,3 +1,4 @@
+from pathlib import Path
 import time
 
 import pytest
@@ -201,3 +202,66 @@ def test_position_keeps_advancing_after_the_restart(stem_player, stems, qtbot):
     stem_player.set_sources([stems[0]])
     resumed_from = stem_player.get_position()
     qtbot.waitUntil(lambda: stem_player.get_position() >= resumed_from + 400, timeout=6000)
+
+
+# --- volume ----------------------------------------------------------------------
+
+def _cmdline(pid):
+    return Path(f"/proc/{pid}/cmdline").read_bytes().decode().split("\0")
+
+
+def test_normalize_volume():
+    from core.player import normalize_volume
+    assert [normalize_volume(v) for v in (0, 55, 100, 150, -4, 49.6)] == [0, 55, 100, 100, 0, 50]
+    assert [normalize_volume(v) for v in ("loud", None, True, float("nan"))] == [100] * 4
+
+
+def test_ffplay_starts_at_the_players_volume(qtbot, tone_wav):
+    p = PlayerThread(str(tone_wav), volume=35)
+    p.start()
+    try:
+        p.play(0)
+        qtbot.waitUntil(lambda: len(ffplay_pids(tone_wav.name)) == 1, timeout=5000)
+        args = _cmdline(ffplay_pids(tone_wav.name)[0])
+        assert args[args.index("-volume") + 1] == "35"
+    finally:
+        p.shutdown()
+
+
+def test_changing_the_volume_while_playing_restarts_the_one_ffplay(player, tone_wav, qtbot):
+    player.play(0)
+    qtbot.waitUntil(lambda: len(ffplay_pids(tone_wav.name)) == 1, timeout=5000)
+    first = ffplay_pids(tone_wav.name)[0]
+    player.set_volume(20)
+
+    def restarted():
+        pids = ffplay_pids(tone_wav.name)
+        return len(pids) == 1 and pids[0] != first
+    qtbot.waitUntil(restarted, timeout=5000)
+    args = _cmdline(ffplay_pids(tone_wav.name)[0])
+    assert args[args.index("-volume") + 1] == "20" and player.volume() == 20
+    assert player.is_playing()
+
+
+def test_changing_the_volume_while_stopped_starts_nothing(player, tone_wav, qtbot):
+    player.set_volume(10)
+    qtbot.wait(300)
+    assert ffplay_pids(tone_wav.name) == [] and not player.is_playing()
+    player.play(0)
+    qtbot.waitUntil(lambda: len(ffplay_pids(tone_wav.name)) == 1, timeout=5000)
+    args = _cmdline(ffplay_pids(tone_wav.name)[0])
+    assert args[args.index("-volume") + 1] == "10"
+
+
+def test_changing_the_volume_while_paused_stays_paused_and_applies_on_resume(player, tone_wav, qtbot):
+    player.play(0)
+    qtbot.waitUntil(lambda: len(ffplay_pids(tone_wav.name)) == 1, timeout=5000)
+    player.pause()
+    qtbot.waitUntil(lambda: ffplay_pids(tone_wav.name) == [], timeout=5000)
+    player.set_volume(40)
+    qtbot.wait(300)
+    assert ffplay_pids(tone_wav.name) == [] and player.is_paused()
+    player.resume()
+    qtbot.waitUntil(lambda: len(ffplay_pids(tone_wav.name)) == 1, timeout=5000)
+    args = _cmdline(ffplay_pids(tone_wav.name)[0])
+    assert args[args.index("-volume") + 1] == "40"

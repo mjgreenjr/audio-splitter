@@ -223,6 +223,19 @@ def test_a_0_0_0_file_with_several_settings_migrates_to_the_current_version(path
     path.write_text('stems_dir = "s"\nrecordings_dir = "r"\nsplit_mode = "4"\n'
                     'stem_load_timeout_s = 120\nlogging = "ERROR"\n')
     c = config.Config()
-    assert c.data == {"stems_dir": "s", "recordings_dir": "r", "split_mode": "4",
-                      "stem_load_timeout_s": 120, "logging": "ERROR"}
+    assert c.data == {**config.DEFAULTS, "stems_dir": "s", "recordings_dir": "r",
+                      "split_mode": "4", "stem_load_timeout_s": 120, "logging": "ERROR"}
     assert tomllib.loads(path.read_text())["meta"]["config_version"] == __version__
+
+
+def test_a_0_1_0_file_migrates_to_the_current_version_keeping_the_settings(path):
+    """Version 0.2.0 added ``volume``."""
+    old = GOLDEN.read_text().replace('# stems_dir = "stems"', 'stems_dir = "mine"')
+    old = old.replace('# logging = "DEBUG"', 'logging = "INFO"')
+    path.write_text(old)
+    c = config.Config()
+    assert c["stems_dir"] == "mine" and c["logging"] == "INFO" and c["volume"] == 100
+    text = path.read_text()
+    assert "# volume = 100" in text and "volume" not in tomllib.loads(text)
+    assert path.with_name("config.toml.bak").read_text() == old
+    assert tomllib.loads(text)["meta"]["config_version"] == __version__

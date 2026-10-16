@@ -1017,3 +1017,90 @@ def test_closing_without_edits_asks_nothing(win, monkeypatch):
     asked = _answer_unsaved(monkeypatch, QMessageBox.StandardButton.Cancel)
     win.centralWidget().setCurrentIndex(2)
     assert win.close() and asked == []
+
+
+# --- volume ---------------------------------------------------------------------------
+
+def _right_of(layout, widget, others):
+    """True when ``widget`` comes after all ``others`` in the horizontal ``layout``."""
+    order = [layout.itemAt(i).widget() for i in range(layout.count())]
+    return all(order.index(widget) > order.index(o) for o in others)
+
+
+def test_both_tabs_have_a_volume_control_on_the_right_of_the_buttons(win):
+    play_layout = win.volume_control.parentWidget().layout()
+    row = next(play_layout.itemAt(i).layout() for i in range(play_layout.count())
+               if play_layout.itemAt(i).layout() is not None
+               and play_layout.itemAt(i).layout().indexOf(win.volume_control) >= 0)
+    assert _right_of(row, win.volume_control, [win.skip_back_btn, win.play_btn, win.stop_btn, win.skip_fwd_btn])
+    sv = win.stem_view
+    srow = next(sv.layout().itemAt(i).layout() for i in range(sv.layout().count())
+                if sv.layout().itemAt(i).layout() is not None
+                and sv.layout().itemAt(i).layout().indexOf(sv.volume_control) >= 0)
+    assert _right_of(srow, sv.volume_control, [sv.skip_back_btn, sv.play_btn, sv.stop_btn, sv.skip_fwd_btn])
+
+
+def test_the_volume_starts_at_the_saved_level_on_both_tabs(qtbot):
+    import config as cfg
+    cfg.CONFIG_PATH.write_text("volume = 35\n")
+    w = MainWindow()
+    qtbot.addWidget(w)
+    assert w.volume_control.volume() == 35 == w.stem_view.volume_control.volume()
+    cfg.CONFIG_PATH.write_text('volume = "loud"\n')
+    w2 = MainWindow()
+    qtbot.addWidget(w2)
+    assert w2.volume_control.volume() == 100
+
+
+def test_moving_either_slider_moves_the_other_and_is_saved_once_it_settles(win, qtbot):
+    import config as cfg
+    win.volume_control.slider.setValue(40)
+    assert win.stem_view.volume_control.volume() == 40
+    win.stem_view.volume_control.slider.setValue(25)
+    assert win.volume_control.volume() == 25
+    qtbot.waitUntil(lambda: not win._volume_timer.isActive(), timeout=2000)
+    assert tomllib.loads(cfg.CONFIG_PATH.read_text())["volume"] == 25 == win.config["volume"]
+
+
+def test_the_player_gets_the_volume_only_after_the_slider_settles(win, tone_wav, qtbot, monkeypatch):
+    win._load_file(Path(tone_wav))
+    settle(win, qtbot)
+    win.volume_control.slider.setValue(60)
+    player = win._ensure_player()
+    assert player.volume() == 60                      # a new player starts at the slider's level
+    seen = []
+    monkeypatch.setattr(player, "set_volume", lambda v: seen.append(v))
+    for v in (50, 40, 30):                           # a drag: one change at the end
+        win.volume_control.slider.setValue(v)
+    assert seen == []
+    qtbot.waitUntil(lambda: seen == [30], timeout=2000)
+
+
+def test_a_stem_player_starts_at_the_volume_too(win, stem_files, qtbot):
+    win.stem_view.set_stems(stem_files)
+    win.volume_control.slider.setValue(45)
+    win._on_stem_play_clicked()
+    assert win._player.volume() == 45
+
+
+def test_the_speaker_mutes_and_unmutes_to_the_earlier_level(qtbot):
+    from ui.volume_control import VolumeControl
+    vc = VolumeControl()
+    qtbot.addWidget(vc)
+    seen = []
+    vc.changed.connect(seen.append)
+    vc.slider.setValue(70)
+    vc.button.click()
+    assert vc.volume() == 0 and seen == [70, 0]
+    vc.button.click()
+    assert vc.volume() == 70 and seen == [70, 0, 70]
+    vc.set_volume(20)                                # setting from outside emits nothing
+    assert seen == [70, 0, 70] and vc.volume() == 20
+
+
+def test_closing_saves_a_volume_that_has_not_settled(win):
+    import config as cfg
+    win.volume_control.slider.setValue(33)
+    assert win._volume_timer.isActive()
+    win.close()
+    assert tomllib.loads(cfg.CONFIG_PATH.read_text())["volume"] == 33

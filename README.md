@@ -35,7 +35,9 @@ Re-run `./install.sh` after pulling changes to update. Your settings are kept.
 ## Using it
 
 - **Playback** tab: *Load from File* (flac, wav, ogg, mp3), then play, seek by clicking or
-  dragging the waveform, stop, or jump to the start or end.
+  dragging the waveform, stop, or jump to the start or end. The speaker and slider at the right
+  set the volume of the app's own playback (not of the output device) and are remembered; the
+  speaker mutes. Changing it while playing restarts the sound for a moment.
 - **Split** tab: choose how many stems (6, 4 or 2), press *Split*, and watch the progress bar.
   A 3-minute song takes about 35 seconds on a recent CPU. The stems appear as rows; untick a
   row to leave it out of playback. Loading a file that was split before shows its stems at once;

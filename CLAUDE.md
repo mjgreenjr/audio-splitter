@@ -50,7 +50,7 @@ the full package list, an Omarchy one already has most of it.
   every setting is listed with its default and a description (`SETTINGS`, one table, so the file
   and the code cannot drift); lines the user uncommented are theirs and kept, commented ones are
   regenerated. Keys: `recordings_dir` (where the Open dialog starts), `stems_dir`, `split_mode`,
-  `stem_load_timeout_s` (seconds before loading is given up, default 60), `logging`. `Config.save`
+  `stem_load_timeout_s` (seconds before loading is given up, default 60), `volume` (0-100, default 100), `logging`. `Config.save`
   writes only values that differ from the default. The file is stamped `[meta] config_version`
   (the app version from `version.py`, the single source). When the app's major or minor is newer
   than the file's, `migrate` backs up to `config.toml.bak`, keeps the set values, ports renames
@@ -135,6 +135,11 @@ Stems… starts in `stems_dir`, shows every flac/wav/ogg/mp3 in the chosen folde
   position, like a seek; with every stem off it plays silence to the end. There is still only one
   player: `MainWindow` replaces it when switching between the loaded file and the stems
   (`_drop_player`), and switching tabs stops playback.
+- Volume is ffplay's own `-volume` (percent, linear), not the output device's. ffplay only takes it
+  at start, so `set_volume()` restarts that one process from the current position while playing
+  (like a seek) and otherwise applies at the next start. The two sliders (`ui/volume_control.py`,
+  at the right end of each tab's button row) show one shared level; `MainWindow` applies and
+  saves it `VOLUME_APPLY_DELAY_MS` (150 ms) after the slider stops, so a drag restarts ffplay once.
 
 ## Testing
 

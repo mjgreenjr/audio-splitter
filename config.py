@@ -35,6 +35,9 @@ SETTINGS = [
     ("stem_load_timeout_s", 60,
      "Seconds to wait for a song or its stems to load before giving up (raise it for very "
      "long songs or a slow disk). Not a positive number: the default of 60 is used."),
+    ("volume", 100,
+     "Playback volume in percent, 0 (silent) to 100 (full). It is the volume of the app's own "
+     "playback, not of the output device. The volume slider remembers its level here."),
     ("logging", "DEBUG",
      'How much is written to the log in logs/: "DEBUG" (most), "INFO" or "ERROR" (least).'),
 ]
