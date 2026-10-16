@@ -1,0 +1,14 @@
+# Python 3.12 in .venv (created with uv). No version pins needed any more:
+# the TensorFlow-era constraints went away with spleeter.
+# PyTorch is installed from the CPU index to keep the venv small:
+#   uv pip install --extra-index-url https://download.pytorch.org/whl/cpu \
+#       --index-strategy unsafe-best-match -r requirements.txt
+PyQt6>=6.4
+pyqtgraph>=0.13
+soundfile>=0.12
+numpy
+demucs>=4.1
+
+# Testing
+pytest
+pytest-qt
