@@ -121,6 +121,9 @@ checks (does it sound right, does dragging feel right) still need a manual run o
 - Commit directly on `main`. Do not create branches or pull requests unless asked. Commit when a
   piece of work is done and verified; push only when asked.
 - Commit messages are short and imperative, describing the behavior change.
+- Keep `CHANGELOG.md` up to date: add user-visible changes (added / changed / fixed / removed) under
+  the newest date heading when you commit them. There are no version numbers yet; if the project
+  starts using them, propose a scheme first.
 - A licence must be chosen before publishing: PyQt6 is GPL v3 (or a paid commercial licence), so a
   public app built on it has to be GPL-compatible unless it moves to PySide6 (LGPL). The licences of
   the Demucs model weights have not been checked (only the code is MIT).

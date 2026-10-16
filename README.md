@@ -67,3 +67,4 @@ models are kept.
 ## Development
 
 See `CLAUDE.md`. Developers run from a checkout with their own `.venv` instead.
+The project history is in `CHANGELOG.md`.
