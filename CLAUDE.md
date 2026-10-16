@@ -74,7 +74,8 @@ the full package list, an Omarchy one already has most of it.
 Both file pickers (Load from File, Load Stems…) are Qt's own dialogs, not the system ones, so their
 size and wording are ours: as wide as the app window (480-900 px, so the buttons stay on screen when
 the window is a quarter of the screen), "Open" / "Select Folder" buttons, a shared `AUDIO_FILTER`.
-Loading a file (`_load_file`) also shows its earlier stems when `existing_stems()` finds them under
+Split asks "Split again?" (default No) when `stems_in()` finds stems for that file and the selected
+mode, since Demucs overwrites that folder. Loading a file (`_load_file`) also shows its earlier stems when `existing_stems()` finds them under
 `stems_dir` (the selected mode's folder first, then the other modes'; matched by file name without
 extension, like the split's own output folder). Load from File starts in `recordings_dir`; Load
 Stems… starts in `stems_dir`, shows every flac/wav/ogg/mp3 in the chosen folder as a row

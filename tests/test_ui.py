@@ -132,6 +132,69 @@ def test_split_shows_progress_and_blocks_a_second_split(win, tone_wav, tone_flac
     assert [Path(p).stem for p in win.stem_view.all_paths()] == ["vocals", "guitar"]
 
 
+def _fake_splitter(monkeypatch):
+    """Replace the splitter with one that records that it was started."""
+    from PyQt6.QtCore import QObject, pyqtSignal
+    started = []
+
+    class FakeSplitter(QObject):
+        finished = pyqtSignal(list)
+        error = pyqtSignal(str)
+        progress = pyqtSignal(int)
+        def __init__(self, *a, **k):
+            super().__init__()
+        def start(self):
+            started.append(True)
+
+    monkeypatch.setattr("ui.main_window.SplitterThread", FakeSplitter)
+    return started
+
+
+def _answer_resplit(monkeypatch, button):
+    """Stand in for the "Split again?" question; returns the list of questions asked."""
+    from PyQt6.QtWidgets import QMessageBox
+    asked = []
+
+    def fake(parent, title, text, *args):
+        asked.append(text)
+        return button
+    monkeypatch.setattr(QMessageBox, "question", fake)
+    return asked
+
+
+def test_splitting_a_song_that_was_split_before_asks_first(win, tone_wav, tone_flac, monkeypatch, tmp_path):
+    from PyQt6.QtWidgets import QMessageBox
+    started = _fake_splitter(monkeypatch)
+    _make_track_stems(tmp_path, tone_flac, "htdemucs_6s", ("vocals", "drums"))
+    win._load_file(Path(tone_wav))
+    asked = _answer_resplit(monkeypatch, QMessageBox.StandardButton.Yes)
+    win._start_split()
+    assert len(asked) == 1 and "tone.wav" in asked[0] and "2 stems" in asked[0]
+    assert started and not win.split_btn.isEnabled()
+
+
+def test_declining_the_question_leaves_the_stems_and_does_not_split(win, tone_wav, tone_flac, monkeypatch, tmp_path):
+    from PyQt6.QtWidgets import QMessageBox
+    started = _fake_splitter(monkeypatch)
+    folder = _make_track_stems(tmp_path, tone_flac, "htdemucs_6s", ("vocals", "drums"))
+    win._load_file(Path(tone_wav))
+    _answer_resplit(monkeypatch, QMessageBox.StandardButton.No)
+    win._start_split()
+    assert not started and win.split_btn.isEnabled()
+    assert sorted(p.name for p in folder.iterdir()) == ["drums.flac", "vocals.flac"]
+
+
+def test_splitting_in_a_mode_with_no_stems_does_not_ask(win, tone_wav, tone_flac, monkeypatch, tmp_path):
+    from PyQt6.QtWidgets import QMessageBox
+    started = _fake_splitter(monkeypatch)
+    _make_track_stems(tmp_path, tone_flac, "htdemucs", ("vocals", "drums"))   # a 4-stem split only
+    win._load_file(Path(tone_wav))
+    asked = _answer_resplit(monkeypatch, QMessageBox.StandardButton.No)
+    win.split_mode_combo.setCurrentIndex(win.split_mode_combo.findData("6"))
+    win._start_split()
+    assert not asked and started
+
+
 def test_failed_split_reenables_the_button(win, tone_wav, monkeypatch, tmp_path):
     from PyQt6.QtCore import QObject, pyqtSignal
     win._load_file(Path(tone_wav))

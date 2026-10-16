@@ -64,6 +64,11 @@ def track_dir(stems_dir, input_path, mode) -> Path:
     return Path(stems_dir) / subfolder / model / Path(input_path).stem
 
 
+def stems_in(stems_dir, input_path, mode) -> list[str]:
+    """The stem files a split of ``input_path`` in ``mode`` left on disk (none if never split)."""
+    return [str(p) for p in sorted(track_dir(stems_dir, input_path, mode).glob("*.flac"))]
+
+
 def existing_stems(stems_dir, input_path, preferred_mode=DEFAULT_MODE) -> list[str]:
     """Stem files already on disk for ``input_path``, or [] if it was never split.
 
@@ -72,9 +77,9 @@ def existing_stems(stems_dir, input_path, preferred_mode=DEFAULT_MODE) -> list[s
     """
     first = normalize_mode(preferred_mode)
     for mode in [first] + [m for m in MODES if m != first]:
-        files = sorted(track_dir(stems_dir, input_path, mode).glob("*.flac"))
+        files = stems_in(stems_dir, input_path, mode)
         if files:
-            return [str(p) for p in files]
+            return files
     return []
 
 

@@ -14,6 +14,10 @@ stem splitting and installation.
 - Loading an audio file also loads the stems of an earlier split of it, if there are any. The stems
   of the selected stem count are used first, then those of another count.
 
+### Changed
+- Pressing Split on a song that was already split with the same stem count asks first, because
+  splitting again replaces the stems on disk.
+
 ### Fixed
 - The installer now also installs the Qt libraries `libxkbcommon`, `libxkbcommon-x11`,
   `xcb-util-keysyms` and `xcb-util-wm`. On an Arch system without a desktop their absence stopped

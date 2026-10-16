@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtCore import Qt, pyqtSlot, QSize
-from core.splitter import MODES, SplitterThread, existing_stems, normalize_mode
+from core.splitter import MODES, SplitterThread, existing_stems, normalize_mode, stems_in
 from core.waveform import min_max_envelope
 from core.player import PlayerThread
 from ui.stem_view import AUDIO_EXTENSIONS, StemView
@@ -573,12 +573,12 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "No file", "Load a file first.")
             return
         stems_dir = Path(self.config["stems_dir"])
+        mode = self.split_mode_combo.currentData()
+        old = stems_in(stems_dir, self._current_file, mode)
+        if old and not self._confirm_resplit(len(old)):
+            return
         stems_dir.mkdir(parents=True, exist_ok=True)
-        self._splitter = SplitterThread(
-            self._current_file,
-            stems_dir,
-            mode=self.split_mode_combo.currentData(),
-        )
+        self._splitter = SplitterThread(self._current_file, stems_dir, mode=mode)
         self._splitter.progress.connect(self.split_progress.setValue)
         self._splitter.finished.connect(self._split_finished)
         self._splitter.error.connect(self._split_failed)
@@ -587,6 +587,16 @@ class MainWindow(QMainWindow):
         self.split_btn.setEnabled(False)  # one split at a time
         self._splitter.start()
         self.statusBar().showMessage("Splitting...")
+
+    def _confirm_resplit(self, count: int) -> bool:
+        """Splitting again writes into the same folder, replacing the stems already there."""
+        answer = QMessageBox.question(
+            self, "Split again?",
+            f"{self._current_file.name} has already been split into {count} stems. "
+            "Splitting again replaces them.\n\nSplit again?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        return answer == QMessageBox.StandardButton.Yes
 
     @pyqtSlot(int)
     def _split_mode_changed(self, _index):
