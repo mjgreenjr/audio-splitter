@@ -64,6 +64,13 @@ models are kept.
 `./install.sh --help` lists them: `--prefix DIR` installs somewhere other than `~/.local`,
 `--no-system-packages` skips the pacman step.
 
+## Licence
+
+audio-splitter is free software under the GNU General Public License, version 3 or later (see
+`LICENSE`). It uses PyQt6, which is GPL v3. The Demucs code is MIT. The Demucs models are not part
+of this repository: the installer downloads them from their upstream source, and they are subject
+to their own terms.
+
 ## Development
 
 See `CLAUDE.md`. Developers run from a checkout with their own `.venv` instead.

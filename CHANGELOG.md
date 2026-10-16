@@ -7,6 +7,11 @@ Everything before 2026-10-13 was written up afterwards from the commit messages 
 earlier development history (before this repository's first commit). It is condensed to playback,
 stem splitting and installation.
 
+## 2026-10-15
+
+### Added
+- A licence: GPL-3.0-or-later (`LICENSE`), with a note in the README about the Demucs models.
+
 ## 2026-10-13
 
 ### Added

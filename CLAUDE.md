@@ -124,9 +124,10 @@ checks (does it sound right, does dragging feel right) still need a manual run o
 - Keep `CHANGELOG.md` up to date: add user-visible changes (added / changed / fixed / removed) under
   the newest date heading when you commit them. There are no version numbers yet; if the project
   starts using them, propose a scheme first.
-- A licence must be chosen before publishing: PyQt6 is GPL v3 (or a paid commercial licence), so a
-  public app built on it has to be GPL-compatible unless it moves to PySide6 (LGPL). The licences of
-  the Demucs model weights have not been checked (only the code is MIT).
+- The project is GPL-3.0-or-later (`LICENSE`), because PyQt6 is GPL v3 (or a paid commercial
+  licence). Moving to PySide6 (LGPL) would allow a more permissive licence. The Demucs code is MIT;
+  no licence is stated for the model weights. They are downloaded by the installer from the
+  upstream source and are not part of this repository, so keep it that way.
 
 ## Findings worth keeping
 
