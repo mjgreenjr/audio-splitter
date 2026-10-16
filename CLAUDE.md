@@ -68,7 +68,9 @@ the full package list, an Omarchy one already has most of it.
 - `ui/stem_view.py` – Split tab: a row per stem (toggle + compact waveform), one shared marker, and
   the four transport buttons. It only emits signals; `MainWindow` drives the one player.
 - `ui/waveform_view.py` – pyqtgraph waveform with draggable marker and click-to-seek; a compact mode
-  (no axes, fixed shared scale) for the stem rows.
+  (no axes, fixed shared scale) for the stem rows. The time axis (`TimeAxis`) labels m:ss
+  (h:mm:ss from an hour) with ticks on round times; a switched-off stem is drawn in a muted blue
+  (`set_dimmed`; opaque, since a transparent pen piles up on dense curves and looks solid).
 - `stems/`, `logs/`, `.venv/`, `config.json` are gitignored.
 
 Both file pickers (Load from File, Load Stems…) are Qt's own dialogs, not the system ones, so their
@@ -164,5 +166,5 @@ checks (does it sound right, does dragging feel right) still need a manual run o
 ## Known issues / ideas not built
 
 - A crash on audio stop was only partially addressed.
-- Dim the waveform of a disabled stem; read the stems off the UI thread (drawing six rows blocks
-  ~1.5 s); a minutes:seconds time axis; zoom/scroll on the waveform; richer export options.
+- Read the stems off the UI thread (drawing six rows blocks ~1.5 s); zoom/scroll on the waveform;
+  richer export options.

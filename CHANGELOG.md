@@ -15,6 +15,9 @@ stem splitting and installation.
   of the selected stem count are used first, then those of another count.
 
 ### Changed
+- The time axis shows minutes and seconds (0:30, 1:00, 1:30 ...; hours from one hour) with ticks
+  on round times, instead of milliseconds.
+- A stem that is switched off is drawn in a muted colour, so it is obvious which stems are in the mix.
 - Pressing Split on a song that was already split with the same stem count asks first, because
   splitting again replaces the stems on disk.
 

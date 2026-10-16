@@ -3,6 +3,45 @@ from PyQt6.QtCore import pyqtSignal, Qt
 import numpy as np
 import pyqtgraph as pg
 
+# Tick steps for the time axis, in ms: (major, minor). The axis picks the smallest major step
+# that leaves about one label per TICK_LABEL_PX.
+_TICK_STEPS = [(s * 1000, m * 1000) for s, m in (
+    (1, 0.5), (2, 1), (5, 1), (10, 2), (15, 5), (30, 10), (60, 10), (120, 30), (300, 60),
+    (600, 120), (900, 300), (1800, 300), (3600, 600), (7200, 1800))]
+TICK_LABEL_PX = 90
+
+
+def format_time(ms) -> str:
+    """Milliseconds as m:ss, or h:mm:ss from one hour (65000 -> "1:05")."""
+    seconds = max(0, int(round(float(ms) / 1000)))
+    hours, rest = divmod(seconds, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
+class TimeAxis(pg.AxisItem):
+    """A bottom axis for data in milliseconds, labelled m:ss with ticks on round times."""
+
+    def tickStrings(self, values, scale, spacing):
+        return [format_time(v) for v in values]
+
+    def tickSpacing(self, minVal, maxVal, size):
+        span = maxVal - minVal
+        if span <= 0 or size <= 0:
+            return []  # no range or no width yet (while the window is laid out): no ticks
+        target = span / max(2.0, size / TICK_LABEL_PX)
+        major, minor = next(((a, b) for a, b in _TICK_STEPS if a >= target), _TICK_STEPS[-1])
+        return [(major, 0), (minor, 0)]
+
+
+_PEN = pg.mkPen("b")
+# A switched-off stem: a muted blue. Opaque on purpose, because a transparent pen piles up
+# wherever the dense curve overlaps itself and looks solid again.
+_PEN_DIMMED = pg.mkPen((45, 45, 110))
+
+
 class WaveformWidget(QWidget):
     """
     A widget for displaying audio waveforms with a movable marker.
@@ -29,7 +68,7 @@ class WaveformWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Create plot widget
-        self.plot_widget = pg.PlotWidget()
+        self.plot_widget = pg.PlotWidget(axisItems={"bottom": TimeAxis("bottom")})
         layout.addWidget(self.plot_widget)
 
         # Disable mouse interaction for the plot (no zooming or panning)
@@ -55,11 +94,12 @@ class WaveformWidget(QWidget):
         self.plot_widget.addItem(self.marker)
 
         # Create waveform curve
-        self.curve = self.plot_widget.plot(pen='b')
+        self.curve = self.plot_widget.plot(pen=_PEN)
+        self._dimmed = False
 
         # Set default properties
         self.plot_widget.setLabel('left', 'Amplitude')
-        self.plot_widget.setLabel('bottom', 'Time (ms)')
+        self.plot_widget.setLabel('bottom', 'Time')
         self.plot_widget.showGrid(x=True, y=True)
 
         if compact:
@@ -74,6 +114,14 @@ class WaveformWidget(QWidget):
         """Compact mode: draw with a fixed vertical range of +-peak (so stems share a scale)."""
         self._y_peak = max(float(peak), 1e-6)
         self.plot_widget.setYRange(-self._y_peak, self._y_peak, padding=0.05)
+
+    def set_dimmed(self, dimmed):
+        """Draw the waveform faint (a stem that is switched off) or normally."""
+        self._dimmed = bool(dimmed)
+        self.curve.setPen(_PEN_DIMMED if self._dimmed else _PEN)
+
+    def is_dimmed(self):
+        return self._dimmed
 
     def show_time_axis(self, visible=True):
         """Compact mode: show the time axis (used on the bottom row only)."""

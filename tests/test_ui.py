@@ -437,6 +437,23 @@ def test_load_stems_shows_every_audio_file_in_the_folder(win, stem_files, monkey
     assert win.stem_view.play_btn.isEnabled()
 
 
+def test_a_disabled_stem_is_drawn_faint_and_comes_back_when_re_enabled(win, stem_files):
+    win.stem_view.set_stems(stem_files)
+    waves = win.stem_view._waves
+    assert not any(w.is_dimmed() for w in waves)
+    win.stem_view._checks[1].setChecked(False)
+    assert [w.is_dimmed() for w in waves] == [False, True, False]
+    win.stem_view._checks[1].setChecked(True)
+    assert not any(w.is_dimmed() for w in waves)
+
+
+def test_new_stems_start_undimmed_after_others_were_switched_off(win, stem_files):
+    win.stem_view.set_stems(stem_files)
+    win.stem_view._checks[0].setChecked(False)
+    win.stem_view.set_stems(stem_files)
+    assert not any(w.is_dimmed() for w in win.stem_view._waves)
+
+
 def test_cancelling_the_folder_dialog_changes_nothing(win, stem_files, monkeypatch):
     win.stem_view.set_stems(stem_files)
     before = win.stem_view.all_paths()

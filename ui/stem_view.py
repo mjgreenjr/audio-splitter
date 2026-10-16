@@ -177,6 +177,8 @@ class StemView(QWidget):
 
     # ------------------------------------------------------------------
     def _toggled(self, _checked):
+        for check, wave in zip(self._checks, self._waves):
+            wave.set_dimmed(not check.isChecked())
         self.enabled_changed.emit(self.enabled_paths())
 
     def _row_seeked(self, ms):
