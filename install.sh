@@ -26,8 +26,9 @@ UNINSTALL=0
 
 # Programs and libraries the app needs from the system:
 #   ffmpeg (ffplay plays, ffprobe measures), libsndfile (soundfile),
-#   xcb-util-cursor (Qt), uv (builds the Python 3.12 env).
-PACMAN_PACKAGES=(ffmpeg libsndfile xcb-util-cursor)
+#   xcb-util-cursor, xcb-util-keysyms, xcb-util-wm, libxkbcommon and libxkbcommon-x11
+#   (the libraries Qt's windowing plugin loads), uv (builds the Python 3.12 env).
+PACMAN_PACKAGES=(ffmpeg libsndfile xcb-util-cursor xcb-util-keysyms xcb-util-wm libxkbcommon libxkbcommon-x11)
 DEMUCS_MODELS=(htdemucs_6s htdemucs)
 
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }

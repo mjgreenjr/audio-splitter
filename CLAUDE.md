@@ -35,8 +35,12 @@ is made absolute first), a menu entry, and the Demucs models pre-downloaded. It 
 `requirements.txt` and the lock file**. System Python on Arch is newer than 3.12 and Demucs is not
 packaged for Arch, which is why the installer owns a 3.12 env instead of using system packages.
 Tested into a throwaway `--prefix` (install, launch, offline split, re-install keeps config,
-uninstall). Not tested: the `sudo pacman` branch and a first install on a clean machine (it
-downloads Python 3.12, the PyTorch wheel and the models).
+uninstall), and on a clean machine: a fresh `archlinux` Docker container with a normal user
+(install including the `sudo pacman` branch, launch offscreen, a 6-stem split, re-install,
+uninstall; about 4.5 minutes). That found the Qt libraries `libxkbcommon`, `libxkbcommon-x11`,
+`xcb-util-keysyms` and `xcb-util-wm` missing from the package list; they are in it now. A
+container has no desktop, so the window and the sound are not covered; a bare Arch machine needs
+the full package list, an Omarchy one already has most of it.
 
 ## Layout
 

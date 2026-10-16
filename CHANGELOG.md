@@ -12,6 +12,11 @@ stem splitting and installation.
 ### Added
 - A licence: GPL-3.0-or-later (`LICENSE`), with a note in the README about the Demucs models.
 
+### Fixed
+- The installer now also installs the Qt libraries `libxkbcommon`, `libxkbcommon-x11`,
+  `xcb-util-keysyms` and `xcb-util-wm`. On an Arch system without a desktop their absence stopped
+  the app from starting (`libxkbcommon.so.0` not found).
+
 ## 2026-10-13
 
 ### Added
