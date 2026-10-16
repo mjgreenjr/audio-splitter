@@ -25,27 +25,30 @@ def win(qtbot, monkeypatch, tmp_path):
 
 def settle(win, qtbot):
     """Wait until the background stem load (if any) has finished and its rows are showing."""
-    qtbot.waitUntil(lambda: not win.stems_loading(), timeout=10000)
+    qtbot.waitUntil(lambda: not win.loading(), timeout=10000)
 
 
-def test_loading_a_file_fills_waveform_and_enables_controls(win, tone_wav):
+def test_loading_a_file_fills_waveform_and_enables_controls(win, tone_wav, qtbot):
     assert not win.play_btn.isEnabled()
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     assert win.waveform.has_data()
     assert 2900 <= win.waveform.duration_ms() <= 3100
     for b in (win.play_btn, win.stop_btn, win.skip_back_btn, win.skip_fwd_btn):
         assert b.isEnabled()
 
 
-def test_loading_bad_file_does_not_crash(win, tmp_path):
+def test_loading_bad_file_does_not_crash(win, tmp_path, qtbot):
     bad = tmp_path / "nope.wav"
     bad.write_bytes(b"not audio")
     win._load_file(bad)
+    settle(win, qtbot)
     assert not win.waveform.has_data()
 
 
 def test_play_then_stop_resets_marker(win, tone_wav, qtbot):
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     win._on_play_clicked()
     assert win.is_playing
     qtbot.waitUntil(lambda: len(ffplay_pids(tone_wav.name)) == 1, timeout=5000)
@@ -55,8 +58,9 @@ def test_play_then_stop_resets_marker(win, tone_wav, qtbot):
     qtbot.waitUntil(lambda: ffplay_pids(tone_wav.name) == [], timeout=5000)
 
 
-def test_skip_forward_uses_waveform_duration(win, tone_wav):
+def test_skip_forward_uses_waveform_duration(win, tone_wav, qtbot):
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     player = win._ensure_player()
     seen = []
     player.seek = lambda ms: seen.append(ms)
@@ -65,30 +69,35 @@ def test_skip_forward_uses_waveform_duration(win, tone_wav):
     assert seen[0] < 10_000_000  # not the ffprobe fallback
 
 
-def test_loading_new_file_replaces_player(win, tone_wav, tmp_path):
+def test_loading_new_file_replaces_player(win, tone_wav, tmp_path, qtbot):
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     first = win._ensure_player()
     other = tmp_path / "other.wav"
     other.write_bytes(tone_wav.read_bytes())
     win._load_file(other)
+    settle(win, qtbot)
     assert win._player is None
     assert win._ensure_player() is not first
 
 
-def test_current_file_is_shown_on_both_tabs(win, tone_wav):
+def test_current_file_is_shown_on_both_tabs(win, tone_wav, qtbot):
     for edit in (win.file_edit_play, win.file_edit_split):
         assert edit.isReadOnly() and edit.text() == ""
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     for edit in (win.file_edit_play, win.file_edit_split):
         assert edit.text() == str(tone_wav)  # the full path
         assert edit.toolTip() == str(tone_wav)
 
 
-def test_failed_load_keeps_showing_the_previous_file(win, tone_wav, tmp_path):
+def test_failed_load_keeps_showing_the_previous_file(win, tone_wav, tmp_path, qtbot):
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     bad = tmp_path / "bad.wav"
     bad.write_bytes(b"not audio")
     win._load_file(bad)
+    settle(win, qtbot)
     assert win.file_edit_play.text() == str(tone_wav)
     assert win.file_edit_split.text() == str(tone_wav)
 
@@ -112,6 +121,7 @@ def test_buttons_stay_short_and_the_path_box_takes_the_width(win):
 def test_split_shows_progress_and_blocks_a_second_split(win, tone_wav, tone_flac, monkeypatch, tmp_path, qtbot):
     from PyQt6.QtCore import QObject, pyqtSignal
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     win.config["stems_dir"] = str(tmp_path / "stems")
 
     class FakeSplitter(QObject):
@@ -170,42 +180,46 @@ def _answer_resplit(monkeypatch, button):
     return asked
 
 
-def test_splitting_a_song_that_was_split_before_asks_first(win, tone_wav, tone_flac, monkeypatch, tmp_path):
+def test_splitting_a_song_that_was_split_before_asks_first(win, tone_wav, tone_flac, monkeypatch, tmp_path, qtbot):
     from PyQt6.QtWidgets import QMessageBox
     started = _fake_splitter(monkeypatch)
     _make_track_stems(tmp_path, tone_flac, "htdemucs_6s", ("vocals", "drums"))
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     asked = _answer_resplit(monkeypatch, QMessageBox.StandardButton.Yes)
     win._start_split()
     assert len(asked) == 1 and "tone.wav" in asked[0] and "2 stems" in asked[0]
     assert started and not win.split_btn.isEnabled()
 
 
-def test_declining_the_question_leaves_the_stems_and_does_not_split(win, tone_wav, tone_flac, monkeypatch, tmp_path):
+def test_declining_the_question_leaves_the_stems_and_does_not_split(win, tone_wav, tone_flac, monkeypatch, tmp_path, qtbot):
     from PyQt6.QtWidgets import QMessageBox
     started = _fake_splitter(monkeypatch)
     folder = _make_track_stems(tmp_path, tone_flac, "htdemucs_6s", ("vocals", "drums"))
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     _answer_resplit(monkeypatch, QMessageBox.StandardButton.No)
     win._start_split()
     assert not started and win.split_btn.isEnabled()
     assert sorted(p.name for p in folder.iterdir()) == ["drums.flac", "vocals.flac"]
 
 
-def test_splitting_in_a_mode_with_no_stems_does_not_ask(win, tone_wav, tone_flac, monkeypatch, tmp_path):
+def test_splitting_in_a_mode_with_no_stems_does_not_ask(win, tone_wav, tone_flac, monkeypatch, tmp_path, qtbot):
     from PyQt6.QtWidgets import QMessageBox
     started = _fake_splitter(monkeypatch)
     _make_track_stems(tmp_path, tone_flac, "htdemucs", ("vocals", "drums"))   # a 4-stem split only
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     asked = _answer_resplit(monkeypatch, QMessageBox.StandardButton.No)
     win.split_mode_combo.setCurrentIndex(win.split_mode_combo.findData("6"))
     win._start_split()
     assert not asked and started
 
 
-def test_failed_split_reenables_the_button(win, tone_wav, monkeypatch, tmp_path):
+def test_failed_split_reenables_the_button(win, tone_wav, monkeypatch, tmp_path, qtbot):
     from PyQt6.QtCore import QObject, pyqtSignal
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     win.config["stems_dir"] = str(tmp_path / "stems")
 
     class FakeSplitter(QObject):
@@ -317,6 +331,7 @@ def test_switching_tabs_stops_playback(needle, win, stem_files, qtbot):
 def test_file_and_stem_playback_never_overlap(win, stem_files, tone_wav, qtbot):
     from conftest import ffplay_pids
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     win.stem_view.set_stems(stem_files)
     win.centralWidget().setCurrentIndex(1)
     win.stem_view.play_btn.click()
@@ -339,7 +354,7 @@ def test_split_mode_defaults_to_six_and_old_or_bad_values_fall_back(win):
     assert win.split_mode_combo.count() == 3
 
 
-def test_choosing_a_split_mode_is_remembered_and_used(win, tone_wav, monkeypatch, tmp_path):
+def test_choosing_a_split_mode_is_remembered_and_used(win, tone_wav, monkeypatch, tmp_path, qtbot):
     from PyQt6.QtCore import QObject, pyqtSignal
     import json
     import config as cfg
@@ -357,6 +372,7 @@ def test_choosing_a_split_mode_is_remembered_and_used(win, tone_wav, monkeypatch
 
     monkeypatch.setattr("ui.main_window.SplitterThread", FakeSplitter)
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     win.config["stems_dir"] = str(tmp_path / "stems")
     win.split_mode_combo.setCurrentIndex(win.split_mode_combo.findData("2"))
     assert json.loads(cfg.CONFIG_PATH.read_text())["split_mode"] == "2"
@@ -555,9 +571,10 @@ def _pick_file(monkeypatch, path, seen=None):
     monkeypatch.setattr(MainWindow, "_choose_audio_file", fake)
 
 
-def test_load_button_opens_the_chosen_file(win, tone_wav, monkeypatch):
+def test_load_button_opens_the_chosen_file(win, tone_wav, monkeypatch, qtbot):
     _pick_file(monkeypatch, tone_wav)
     win.load_btn.click()
+    settle(win, qtbot)
     assert win._current_file == Path(tone_wav)
     assert win.waveform.has_data()
 
@@ -612,6 +629,7 @@ def test_tabs_are_playback_and_split(win):
 def test_file_given_at_startup_is_loaded(qtbot, tone_wav):
     w = MainWindow(initial_file=str(tone_wav))
     qtbot.addWidget(w)
+    settle(w, qtbot)
     assert w._current_file == Path(tone_wav)
     assert w.file_edit_play.text() == str(tone_wav)
     assert w.waveform.has_data() and w.play_btn.isEnabled()
@@ -670,7 +688,7 @@ def test_a_slow_load_shows_a_busy_pointer_then_locks_the_window(win, stem_files,
     monkeypatch.setattr(mw, "STEM_LOCK_DELAY_MS", 30)
     _pick_folder(monkeypatch, Path(stem_files[0]).parent)
     win.load_stems_btn.click()
-    assert win.stems_loading() and _wait_cursor()           # at once ...
+    assert win.loading() and _wait_cursor()           # at once ...
     assert win.centralWidget().isEnabled()                   # ... but not locked yet
     qtbot.waitUntil(lambda: not win.centralWidget().isEnabled(), timeout=3000)
     assert not win.centralWidget().isEnabled()
@@ -703,9 +721,9 @@ def test_a_load_that_takes_too_long_is_given_up_with_an_explanation(win, stem_fi
     qtbot.waitUntil(lambda: bool(shown), timeout=3000)
     (title, text), = shown
     assert "timed out" in title
-    assert "0.05 seconds" in text and "Stem loading timeout" in text and "Settings" in text
+    assert "0.05 seconds" in text and "Loading timeout" in text and "Settings" in text
     assert "stem_load_timeout_s" in text
-    assert not win.stems_loading() and _no_override_cursor() and win.centralWidget().isEnabled()
+    assert not win.loading() and _no_override_cursor() and win.centralWidget().isEnabled()
     slow_loader.set()                                       # the stopped load must not appear late
     qtbot.waitUntil(lambda: not win._stale_loaders, timeout=5000)
     assert win.stem_view.all_paths() == before
@@ -718,10 +736,10 @@ def test_a_newer_load_replaces_one_still_running(win, stem_files, tone_flac, slo
     shutil.copy(tone_flac, other / "bass.flac")
     _pick_folder(monkeypatch, Path(stem_files[0]).parent)
     win.load_stems_btn.click()
-    first = win._stem_loader
+    first = win._loader
     _pick_folder(monkeypatch, other)
     win.load_stems_btn.click()
-    assert win._stem_loader is not first
+    assert win._loader is not first
     slow_loader.set()
     settle(win, qtbot)
     qtbot.waitUntil(lambda: not win._stale_loaders, timeout=5000)
@@ -732,9 +750,9 @@ def test_a_newer_load_replaces_one_still_running(win, stem_files, tone_flac, slo
 def test_closing_the_window_during_a_load_stops_it_cleanly(win, stem_files, slow_loader, monkeypatch, qtbot):
     _pick_folder(monkeypatch, Path(stem_files[0]).parent)
     win.load_stems_btn.click()
-    loader = win._stem_loader
+    loader = win._loader
     win.close()
-    assert not loader.isRunning() and not win.stems_loading()
+    assert not loader.isRunning() and not win.loading()
     assert _no_override_cursor()
 
 
@@ -890,6 +908,7 @@ def test_a_playing_tab_stopped_by_switching_says_stopped_not_playing(needle, win
     qtbot.waitUntil(lambda: ffplay_pids(needle) == [], timeout=5000)
     assert win.statusBar().currentMessage() == "Stopped"
     win._load_file(Path(tone_wav))
+    settle(win, qtbot)
     win.play_btn.click()
     qtbot.waitUntil(lambda: win.statusBar().currentMessage() == "Playing...", timeout=5000)
     tabs.setCurrentIndex(1)
@@ -931,3 +950,69 @@ def test_the_whole_window_locks_while_stems_load_including_settings(win, stem_fi
     slow_loader.set()
     settle(win, qtbot)
     assert win.settings_view.isEnabled()
+
+
+# --- loading the file in the background -----------------------------------------
+
+def test_a_slow_file_load_shows_a_busy_pointer_and_locks_the_window(win, tone_wav, slow_loader, monkeypatch, qtbot):
+    import ui.main_window as mw
+    monkeypatch.setattr(mw, "STEM_LOCK_DELAY_MS", 30)
+    win._load_file(Path(tone_wav))
+    assert win.loading() and _wait_cursor() and not win.waveform.has_data()
+    qtbot.waitUntil(lambda: not win.centralWidget().isEnabled(), timeout=3000)
+    slow_loader.set()
+    settle(win, qtbot)
+    assert win.waveform.has_data() and win._current_file == Path(tone_wav)
+    assert _no_override_cursor() and win.centralWidget().isEnabled()
+
+
+def test_a_file_load_that_takes_too_long_is_given_up_naming_the_setting(win, tone_wav, slow_loader, monkeypatch, qtbot):
+    from PyQt6.QtWidgets import QMessageBox
+    shown = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda parent, title, text, *a: shown.append((title, text)))
+    win.config["stem_load_timeout_s"] = 0.05
+    win._load_file(Path(tone_wav))
+    qtbot.waitUntil(lambda: bool(shown), timeout=3000)
+    (title, text), = shown
+    assert "the file" in title and "timed out" in title
+    assert "Loading timeout" in text and "stem_load_timeout_s" in text
+    assert win._current_file is None and not win.loading() and _no_override_cursor()
+    slow_loader.set()
+    qtbot.waitUntil(lambda: not win._stale_loaders, timeout=5000)
+    assert not win.waveform.has_data()
+
+
+# --- closing the window with unsaved settings -----------------------------------
+
+def _close_with_unsaved_edit(win, monkeypatch, button):
+    asked = _answer_unsaved(monkeypatch, button)
+    win.centralWidget().setCurrentIndex(2)
+    win.settings_view.timeout_spin.setValue(99)
+    return asked, win.close()
+
+
+def test_closing_with_unsaved_settings_asks_and_cancel_keeps_the_window(win, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+    asked, closed = _close_with_unsaved_edit(win, monkeypatch, QMessageBox.StandardButton.Cancel)
+    assert asked == ["Unsaved settings"] and not closed
+    assert win.settings_view.timeout_spin.value() == 99
+
+
+def test_closing_with_unsaved_settings_can_save_or_discard(win, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+    asked, closed = _close_with_unsaved_edit(win, monkeypatch, QMessageBox.StandardButton.Save)
+    assert closed and win.config["stem_load_timeout_s"] == 99
+
+
+def test_closing_and_discarding_leaves_the_saved_settings_alone(win, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+    before = win.config["stem_load_timeout_s"]
+    asked, closed = _close_with_unsaved_edit(win, monkeypatch, QMessageBox.StandardButton.Discard)
+    assert closed and win.config["stem_load_timeout_s"] == before
+
+
+def test_closing_without_edits_asks_nothing(win, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+    asked = _answer_unsaved(monkeypatch, QMessageBox.StandardButton.Cancel)
+    win.centralWidget().setCurrentIndex(2)
+    assert win.close() and asked == []

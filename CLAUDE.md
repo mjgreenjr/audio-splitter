@@ -66,15 +66,15 @@ the full package list, an Omarchy one already has most of it.
   main waveform and every stem row). `envelope_from_file` gives the same result for a file read in
   blocks (flat memory: a 15-minute stereo stem is ~520 MB decoded, the blocks need ~70 MB) and
   checks a cancel callback between blocks.
-- `core/stemload.py` – `StemLoadThread`: reads the stem files and emits their envelopes, so the
-  window does not freeze (six 15-minute stems take ~5 s). `normalize_timeout` turns the
+- `core/stemload.py` – `StemLoadThread`: reads audio files (the stems, or the one loaded file) and
+  emits their envelopes, so the window does not freeze (six 15-minute stems take ~5 s). `normalize_timeout` turns the
   `stem_load_timeout_s` setting into seconds (not a positive number: 60).
 - `core/logger.py` – logging setup (logs to `logs/`).
 - `ui/main_window.py` – the window: a **Playback** tab (path box, Load from File, waveform,
   transport buttons ⏮ ▶ ■ ⏭) and a **Split** tab (stem count selector, Load Stems…, path box,
   Split, progress bar, the stem view) and a **Settings** tab (`ui/settings_view.py`: folders, stem
   loading timeout, logging level; nothing is applied until Save, and showing the tab drops unsaved
-  edits; leaving it with unsaved edits asks Save / Discard / Cancel, and Cancel puts the tab
+  edits; leaving it, or closing the window, with unsaved edits asks Save / Discard / Cancel, and Cancel puts the tab
 back). There is no toolbar. Switching between Playback and Split stops playback; a visit to
   Settings does not (`_last_play_tab` remembers which of the two was shown last).
 - `ui/stem_view.py` – Split tab: a row per stem (toggle + compact waveform), one shared marker, and
@@ -88,9 +88,9 @@ back). There is no toolbar. Switching between Playback and Split stops playback;
 Both file pickers (Load from File, Load Stems…) are Qt's own dialogs, not the system ones, so their
 size and wording are ours: as wide as the app window (480-900 px, so the buttons stay on screen when
 the window is a quarter of the screen), "Open" / "Select Folder" buttons, a shared `AUDIO_FILTER`.
-Stems load on a worker thread (`MainWindow._show_stems`): the pointer turns busy at once, the window
+The loaded file and the stems load on a worker thread (`MainWindow._start_load`, used by `_load_file` and `_show_stems`; one load at a time, a file's stems start after the file): the pointer turns busy at once, the window
 (the whole tab widget) locks if the load runs past `STEM_LOCK_DELAY_MS` (250 ms, so quick loads
-never flash), and after `stem_load_timeout_s` the wait is given up with a message naming the setting.
+never flash), and after `stem_load_timeout_s` (Settings: "Loading timeout") the wait is given up with a message naming the setting.
 A newer load, loading another file, or closing the window cancels the one running (a Python thread
 cannot be killed; it stops at its next block and its result is dropped). Split asks "Split again?" (default No) when `stems_in()` finds stems for that file and the selected
 mode, since Demucs overwrites that folder. Loading a file (`_load_file`) also shows its earlier stems when `existing_stems()` finds them under
@@ -183,4 +183,4 @@ checks (does it sound right, does dragging feel right) still need a manual run o
 
 - A crash on audio stop was only partially addressed.
 - Zoom/scroll on the waveform; richer export options. Building the six rows still happens on the UI
-  thread (short); the main waveform of the loaded file is still read on it too (~1 s for 15 min).
+  thread (short).

@@ -7,6 +7,15 @@ Everything before 2026-10-13 was written up afterwards from the commit messages 
 earlier development history (before this repository's first commit). It is condensed to playback,
 stem splitting and installation.
 
+## 2026-10-16
+
+### Changed
+- Loading an audio file no longer freezes the window: it loads in the background like the stems
+  (busy pointer, the window locks if it takes over a quarter of a second, and the same time limit,
+  now called "Loading timeout" in Settings; the config key is still `stem_load_timeout_s`).
+- Closing the window with unsaved changes on the Settings tab asks Save / Discard / Cancel, like
+  leaving the tab does.
+
 ## 2026-10-15
 
 ### Added
@@ -25,7 +34,7 @@ stem splitting and installation.
 - Stems load in the background, so the window no longer freezes (about 1.5 s for six stems of a
   3-minute song, about 5 s for 15 minutes). The pointer shows busy while they load, the window is
   locked if it takes more than a quarter of a second, and loading is given up after a time limit
-  with a message that says which setting to raise (Settings > Stem loading timeout, default 60
+  with a message that says which setting to raise (Settings > Loading timeout, default 60
   seconds, `stem_load_timeout_s` in `config.json`).
 - Reading a stem uses a fixed amount of memory (about 70 MB) however long it is; a 15-minute stereo
   stem used to need about 520 MB.

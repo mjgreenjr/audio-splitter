@@ -12,7 +12,6 @@ from PyQt6.QtGui import QCursor, QIcon
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize
 from core.splitter import MODES, SplitterThread, existing_stems, normalize_mode, stems_in
 from core.stemload import StemLoadThread, normalize_timeout
-from core.waveform import min_max_envelope
 from core.player import PlayerThread
 from ui.settings_view import SettingsView
 from ui.stem_view import AUDIO_EXTENSIONS, StemView
@@ -49,8 +48,9 @@ class MainWindow(QMainWindow):
         self._splitter = None
         # Stems are read on a worker thread (see _show_stems). Loaders that were given up on stay
         # referenced until they finish: a QThread must not be destroyed while it runs.
-        self._stem_loader = None
-        self._stem_then = None
+        self._loader = None
+        self._loader_then = None
+        self._loader_what = ""
         self._stale_loaders = set()
         self._busy_cursor = False
         self._locked = False
@@ -59,7 +59,7 @@ class MainWindow(QMainWindow):
         self._lock_timer.timeout.connect(self._lock_window)
         self._timeout_timer = QTimer(self)
         self._timeout_timer.setSingleShot(True)
-        self._timeout_timer.timeout.connect(self._stem_load_timed_out)
+        self._timeout_timer.timeout.connect(self._load_timed_out)
 
         if initial_file:
             self._open_initial_file(Path(initial_file))
@@ -247,26 +247,16 @@ class MainWindow(QMainWindow):
             self._load_file(Path(path))
 
     def _load_file(self, path: Path):
-        """Load an audio file and display its waveform."""
+        """Load an audio file and display its waveform (read on a worker thread)."""
         log.info("Loading file: %s", path)
-        self._abandon_stem_load()  # stems still loading belong to the previous file
+        self._start_load([path], lambda result: self._file_loaded(path, result), "the file")
 
-        # Clear previous waveform data
+    def _file_loaded(self, path: Path, result):
+        """The background read of ``path`` is over: show it, or say it could not be read."""
         self.waveform.clear()
-
-        try:
-            import soundfile as sf
-            data, sample_rate = sf.read(str(path), dtype="float32")
-
-            duration_ms = len(data) / sample_rate * 1000
-            # About 2,000 min/max pairs are plenty to draw (and cheap enough to
-            # show one waveform per stem).
-            time_points, amplitude_points = min_max_envelope(data, sample_rate)
-
-            # Update waveform display
+        if result:
+            _, time_points, amplitude_points = result[0]
             self.waveform.set_waveform_data(time_points, amplitude_points)
-
-            # Store current file path
             self._current_file = path
             self._show_current_file()
             # Drop any player bound to the previous file; it is recreated
@@ -275,13 +265,12 @@ class MainWindow(QMainWindow):
             self.is_playing = False
             self.stem_view.set_playing(False)
             self.play_btn.setIcon(QIcon.fromTheme("media-playback-start"))
-            log.info("Loaded %s (%.1fs, %d Hz)", path.name, duration_ms / 1000, sample_rate)
+            log.info("Loaded %s (%.1fs)", path.name, self.waveform.duration_ms() / 1000)
             self.statusBar().showMessage(f"Loaded: {path.name}")
             self._load_existing_stems(path)
-
-        except Exception as e:
-            log.exception("Failed to load audio file %s", path)
-            QMessageBox.critical(self, "Error", f"Failed to load audio file: {str(e)}")
+        else:
+            log.error("Failed to load audio file %s", path)
+            QMessageBox.critical(self, "Error", f"Failed to load audio file: {path.name}")
 
         # Enable playback controls once a file is loaded via dialog
         self.play_btn.setEnabled(True)
@@ -611,55 +600,66 @@ class MainWindow(QMainWindow):
         self._show_stems(files)
         self.statusBar().showMessage(f"Split finished: {len(files)} files", 3000)
 
-    def stems_loading(self) -> bool:
-        return self._stem_loader is not None
+    def loading(self) -> bool:
+        return self._loader is not None
 
     def _show_stems(self, files, then=None):
         """Put these stem files on the Split tab (replacing any earlier ones).
 
-        The files are read on a worker thread, which can take a few seconds for long songs. Until
-        it finishes the pointer is a busy one, the window locks if it takes more than
-        STEM_LOCK_DELAY_MS, and after the ``stem_load_timeout_s`` setting the wait is given up
-        with an explanation. ``then(count)`` runs once the rows are showing (not after a
-        timeout or when another load replaces this one).
+        ``then(count)`` runs once the rows are showing (not after a timeout or when another load
+        replaces this one). Reading happens in the background, see ``_start_load``.
         """
-        self._abandon_stem_load()
         if self._player is not None and self._player_is_stems:
             self._drop_player()  # its stems are being replaced
             self.stem_view.set_playing(False)
+
+        def show(result):
+            self.stem_view.set_loaded(result)
+            if then is not None:
+                then(len(self.stem_view.all_paths()))
+        self._start_load(files, show, "the stems")
+
+    def _start_load(self, files, done, what):
+        """Read audio files on a worker thread and call ``done(result)`` with what was readable.
+
+        This can take a few seconds for long songs. Until it finishes the pointer is a busy one,
+        the window locks if it takes more than STEM_LOCK_DELAY_MS, and after the
+        ``stem_load_timeout_s`` setting the wait is given up with an explanation (``what`` names
+        what was being loaded). A newer load replaces one still running.
+        """
+        self._abandon_load()
         loader = StemLoadThread([str(f) for f in files])
-        loader.loaded.connect(self._stem_load_finished)
-        loader.finished.connect(self._stem_loader_ended)
-        self._stem_loader = loader
-        self._stem_then = then
+        loader.loaded.connect(self._load_finished)
+        loader.finished.connect(self._loader_ended)
+        self._loader = loader
+        self._loader_then = done
+        self._loader_what = what
         self._begin_busy()
         loader.start()
 
     @pyqtSlot(list)
-    def _stem_load_finished(self, result):
-        if self.sender() is not self._stem_loader:
+    def _load_finished(self, result):
+        if self.sender() is not self._loader:
             return  # a load that was given up on
-        loader, then = self._stem_loader, self._stem_then
-        self._stem_loader = self._stem_then = None
-        self._stale_loaders.add(loader)  # still winding down; released in _stem_loader_ended
+        loader, then = self._loader, self._loader_then
+        self._loader = self._loader_then = None
+        self._stale_loaders.add(loader)  # still winding down; released in _loader_ended
         self._end_busy()
-        self.stem_view.set_loaded(result)
-        if then is not None:
-            then(len(self.stem_view.all_paths()))
+        then(result)
 
     @pyqtSlot()
-    def _stem_loader_ended(self):
+    def _loader_ended(self):
         self._stale_loaders.discard(self.sender())
 
-    def _abandon_stem_load(self):
+    def _abandon_load(self):
         """Stop waiting for the stems being loaded, if any; their result is dropped."""
-        loader = self._stem_loader
+        loader = self._loader
         if loader is None:
             return
-        loader.loaded.disconnect(self._stem_load_finished)
+        loader.loaded.disconnect(self._load_finished)
         loader.cancel()
         self._stale_loaders.add(loader)
-        self._stem_loader = self._stem_then = None
+        self._loader = self._loader_then = None
         self._end_busy()
 
     def _begin_busy(self):
@@ -683,22 +683,23 @@ class MainWindow(QMainWindow):
     @pyqtSlot()
     def _lock_window(self):
         """Nothing can be clicked while the stems load (the title bar still closes the window)."""
-        if self._stem_loader is not None and not self._locked:
+        if self._loader is not None and not self._locked:
             self.centralWidget().setEnabled(False)
             self._locked = True
 
     @pyqtSlot()
-    def _stem_load_timed_out(self):
-        if self._stem_loader is None:
+    def _load_timed_out(self):
+        if self._loader is None:
             return
         seconds = normalize_timeout(self.config["stem_load_timeout_s"])
-        log.warning("Loading the stems took longer than %g s; gave up", seconds)
-        self._abandon_stem_load()
-        self.statusBar().showMessage("Loading the stems timed out", 8000)
+        what = self._loader_what
+        log.warning("Loading %s took longer than %g s; gave up", what, seconds)
+        self._abandon_load()
+        self.statusBar().showMessage(f"Loading {what} timed out", 8000)
         QMessageBox.warning(
-            self, "Loading the stems timed out",
-            f"Loading the stems took longer than {seconds:g} seconds, so it was stopped.\n\n"
-            "If your songs are long or the disk is slow, raise \"Stem loading timeout\" in "
+            self, f"Loading {what} timed out",
+            f"Loading {what} took longer than {seconds:g} seconds, so it was stopped.\n\n"
+            "If your songs are long or the disk is slow, raise \"Loading timeout\" in "
             "Settings (the key is stem_load_timeout_s in config.json) and load them again.")
 
     def _make_folder_dialog(self, start: str):
@@ -763,7 +764,10 @@ class MainWindow(QMainWindow):
         self._show_stems([str(p) for p in files], then=shown)
 
     def closeEvent(self, event):
-        self._abandon_stem_load()
+        if self._shown_tab == self._settings_tab and not self._leave_settings():
+            event.ignore()  # the user chose Cancel on the unsaved settings
+            return
+        self._abandon_load()
         for loader in list(self._stale_loaders):
             loader.wait(3000)  # it stops at its next block
         if self._player is not None:

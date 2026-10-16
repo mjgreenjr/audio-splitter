@@ -40,7 +40,7 @@ class SettingsView(QWidget):
         form = QFormLayout()
         form.addRow("Audio folder:", self.recordings_edit)
         form.addRow("Stems folder:", self.stems_edit)
-        form.addRow("Stem loading timeout:", self.timeout_spin)
+        form.addRow("Loading timeout:", self.timeout_spin)
         radios = QHBoxLayout()
         for radio in (self.debug_radio, self.info_radio, self.error_radio):
             radios.addWidget(radio)
