@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtCore import Qt, pyqtSlot, QSize
-from core.splitter import MODES, SplitterThread, normalize_mode
+from core.splitter import MODES, SplitterThread, existing_stems, normalize_mode
 from core.waveform import min_max_envelope
 from core.player import PlayerThread
 from ui.stem_view import AUDIO_EXTENSIONS, StemView
@@ -321,6 +321,7 @@ class MainWindow(QMainWindow):
             self.play_btn.setIcon(QIcon.fromTheme("media-playback-start"))
             log.info("Loaded %s (%.1fs, %d Hz)", path.name, duration_ms / 1000, sample_rate)
             self.statusBar().showMessage(f"Loaded: {path.name}")
+            self._load_existing_stems(path)
 
         except Exception as e:
             log.exception("Failed to load audio file %s", path)
@@ -331,6 +332,20 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(True)
         self.skip_back_btn.setEnabled(True)
         self.skip_fwd_btn.setEnabled(True)
+
+    def _load_existing_stems(self, path: Path):
+        """Put the stems of an earlier split of ``path`` on the Split tab, if there are any."""
+        try:
+            files = existing_stems(self.config["stems_dir"], path, self.config["split_mode"])
+            if not files:
+                return
+            self._show_stems(files)
+            loaded = len(self.stem_view.all_paths())
+            if loaded:
+                log.info("Found %d existing stems for %s", loaded, path.name)
+                self.statusBar().showMessage(f"Loaded: {path.name} ({loaded} stems found)")
+        except Exception:
+            log.exception("Could not load existing stems for %s", path)
 
     def _ensure_player(self):
         """Return the single persistent player, (re)created for the file.

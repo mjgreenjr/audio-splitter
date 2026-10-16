@@ -34,7 +34,8 @@ Re-run `./install.sh` after pulling changes to update. Your settings are kept.
   dragging the waveform, stop, or jump to the start or end.
 - **Split** tab: choose how many stems (6, 4 or 2), press *Split*, and watch the progress bar.
   A 3-minute song takes about 35 seconds on a recent CPU. The stems appear as rows; untick a
-  row to leave it out of playback. *Load Stems…* shows stems from an earlier split.
+  row to leave it out of playback. Loading a file that was split before shows its stems at once;
+  *Load Stems…* opens any other folder of stems.
 
 Stems are saved as FLAC in `~/Music/audio-splitter/stems/<model>/<song>/`.
 

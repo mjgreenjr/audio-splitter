@@ -7,7 +7,8 @@ import soundfile as sf
 
 from core import splitter
 from core.splitter import (
-    DEFAULT_MODE, MODES, PIANO_MIN_RMS, SplitterThread, normalize_mode, rms_level, track_dir,
+    DEFAULT_MODE, MODES, PIANO_MIN_RMS, SplitterThread, existing_stems, normalize_mode, rms_level,
+    track_dir,
 )
 
 
@@ -74,6 +75,20 @@ def test_each_mode_runs_the_right_model_and_writes_to_its_own_folder(tmp_path):
     for mode, cmd in cmds.items():
         out_root = Path(cmd[cmd.index("-o") + 1])
         assert out_root / "htdemucs_6s" / "song" == dirs[mode] or out_root / "htdemucs" / "song" == dirs[mode]
+
+
+def test_existing_stems_prefers_the_given_mode_then_falls_back(tmp_path):
+    stems = tmp_path / "stems"
+    assert existing_stems(stems, "song.flac") == []          # nothing split, no folder at all
+    for mode, names in (("4", ("vocals", "drums")), ("2", ("vocals", "no_vocals"))):
+        folder = track_dir(stems, "song.flac", mode)
+        folder.mkdir(parents=True)
+        for n in names:
+            (folder / f"{n}.flac").write_bytes(b"x")
+        (folder / "notes.txt").write_text("not a stem")
+    assert [Path(p).name for p in existing_stems(stems, "song.flac", "2")] == ["no_vocals.flac", "vocals.flac"]
+    assert [Path(p).name for p in existing_stems(stems, "song.flac", "6")] == ["drums.flac", "vocals.flac"]
+    assert existing_stems(stems, "other.flac", "6") == []
 
 
 def test_unknown_mode_falls_back_to_the_default():

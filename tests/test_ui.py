@@ -7,12 +7,13 @@ from conftest import ffplay_pids
 
 
 @pytest.fixture
-def win(qtbot, monkeypatch):
+def win(qtbot, monkeypatch, tmp_path):
     # Don't let tests block on modal dialogs.
     from PyQt6.QtWidgets import QMessageBox
     for fn in ("critical", "warning", "information"):
         monkeypatch.setattr(QMessageBox, fn, lambda *a, **k: None)
     w = MainWindow()
+    w.config["stems_dir"] = str(tmp_path / "stems")  # never the checkout's real stems/ folder
     qtbot.addWidget(w)
     yield w
     if w._player is not None:
@@ -305,6 +306,55 @@ def test_split_mode_in_config_is_restored_at_startup(qtbot, monkeypatch):
 
 
 # --- loading stems that are already on disk ----------------------------------
+
+def _make_track_stems(tmp_path, tone_flac, subdir, names, track="tone"):
+    """Stems of ``track`` as a split would leave them under tmp_path/stems/<subdir>/<track>."""
+    import shutil
+    folder = tmp_path / "stems" / subdir / track
+    folder.mkdir(parents=True)
+    for name in names:
+        shutil.copy(tone_flac, folder / f"{name}.flac")
+    return folder
+
+
+def test_loading_a_file_also_loads_its_existing_stems(win, tone_wav, tone_flac, tmp_path):
+    _make_track_stems(tmp_path, tone_flac, "htdemucs_6s", ("vocals", "drums", "bass"))
+    win._load_file(Path(tone_wav))
+    assert [Path(p).stem for p in win.stem_view.all_paths()] == ["vocals", "drums", "bass"]
+    assert "3 stems found" in win.statusBar().currentMessage()
+
+
+def test_loading_a_file_with_no_stems_leaves_the_split_tab_alone(win, tone_wav, tone_flac, tmp_path):
+    other = _make_track_stems(tmp_path, tone_flac, "htdemucs_6s", ("vocals",), track="another song")
+    win._load_file(Path(tone_wav))
+    assert win.stem_view.all_paths() == []
+    assert win.statusBar().currentMessage() == "Loaded: tone.wav"
+    assert other.is_dir()
+
+
+def test_existing_stems_of_the_selected_mode_win_over_other_modes(win, tone_wav, tone_flac, tmp_path):
+    _make_track_stems(tmp_path, tone_flac, "htdemucs_6s", ("vocals", "drums", "bass"))
+    _make_track_stems(tmp_path, tone_flac, "two_stem/htdemucs", ("vocals", "no_vocals"))
+    win.config["split_mode"] = "2"
+    win._load_file(Path(tone_wav))
+    assert [Path(p).stem for p in win.stem_view.all_paths()] == ["vocals", "no_vocals"]
+
+
+def test_stems_of_another_mode_are_used_when_the_selected_mode_has_none(win, tone_wav, tone_flac, tmp_path):
+    _make_track_stems(tmp_path, tone_flac, "htdemucs", ("vocals", "drums", "bass", "other"))
+    win.config["split_mode"] = "6"
+    win._load_file(Path(tone_wav))
+    assert len(win.stem_view.all_paths()) == 4
+
+
+def test_unreadable_existing_stems_do_not_break_loading_the_file(win, tone_wav, tmp_path):
+    folder = tmp_path / "stems" / "htdemucs_6s" / "tone"
+    folder.mkdir(parents=True)
+    (folder / "vocals.flac").write_bytes(b"not audio")
+    win._load_file(Path(tone_wav))
+    assert win.waveform.has_data()
+    assert win.stem_view.all_paths() == []
+
 
 def _pick_folder(monkeypatch, folder, seen=None):
     """Stand in for the folder dialog: choose ``folder`` ("" = cancel)."""

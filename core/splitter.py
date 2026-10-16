@@ -64,6 +64,20 @@ def track_dir(stems_dir, input_path, mode) -> Path:
     return Path(stems_dir) / subfolder / model / Path(input_path).stem
 
 
+def existing_stems(stems_dir, input_path, preferred_mode=DEFAULT_MODE) -> list[str]:
+    """Stem files already on disk for ``input_path``, or [] if it was never split.
+
+    The preferred mode's folder wins; otherwise the first of the other modes (in the
+    order of ``MODES``) that has any stems.
+    """
+    first = normalize_mode(preferred_mode)
+    for mode in [first] + [m for m in MODES if m != first]:
+        files = sorted(track_dir(stems_dir, input_path, mode).glob("*.flac"))
+        if files:
+            return [str(p) for p in files]
+    return []
+
+
 def rms_level(path) -> float:
     """RMS of a whole audio file, all channels, full scale = 1.0."""
     data, _ = sf.read(path, dtype="float32")

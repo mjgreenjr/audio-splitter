@@ -11,6 +11,8 @@ stem splitting and installation.
 
 ### Added
 - A licence: GPL-3.0-or-later (`LICENSE`), with a note in the README about the Demucs models.
+- Loading an audio file also loads the stems of an earlier split of it, if there are any. The stems
+  of the selected stem count are used first, then those of another count.
 
 ### Fixed
 - The installer now also installs the Qt libraries `libxkbcommon`, `libxkbcommon-x11`,
